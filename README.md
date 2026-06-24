@@ -14,6 +14,9 @@ BIMWeb serves as the primary interface for the BIMRAG platform. When a user asks
 
 ![Web Application Convergence](assets/bimweb_premium.png)
 
+### Tech Stack & System Architecture
+![BIMWeb Tech Stack Flow](assets/bimweb_excalidraw.png)
+
 This architecture bridges the gap between abstract AI reasoning and tangible, visual engineering data.
 
 ## Tech Stack
