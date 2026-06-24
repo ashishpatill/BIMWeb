@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# BIMWeb: Human-in-the-Loop 3D Convergence
+
+## The Breakthrough
+The final hurdle in realizing the value of the BIMRAG ecosystem is the user experience. Raw JSON outputs and terminal logs, no matter how accurate, fail to provide actionable context for architectural or engineering workflows.
+
+**BIMWeb** is the convergence point where state-of-the-art AI research meets human-in-the-loop validation. It is a modern web application that physically maps the extracted data, relationships, and Tri-Modal search results directly onto 3D building models.
+
+## Ecosystem Integration
+BIMWeb serves as the primary interface for the BIMRAG platform. When a user asks a complex query:
+1. The request flows through the **BIMCloud** edge gateway.
+2. The **BIMAgent** orchestrates the deep research.
+3. The **BIMIndex** retrieves the exact structural coordinates.
+4. **BIMWeb** renders the results in the browser, highlighting exact bounding boxes and components on the WebGL (three.js) canvas.
+
+![Web Application Convergence](../assets/bimweb_premium.png)
+
+This architecture bridges the gap between abstract AI reasoning and tangible, visual engineering data.
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| **Framework** | Next.js 16 (App Router) |
+| **Language** | TypeScript (Strict Mode) |
+| **Styling** | Tailwind CSS v4 + shadcn/ui |
+| **3D Rendering**| three.js (WebGL) |
+| **Database** | Neon Postgres + Drizzle ORM |
+| **Auth** | Kinde OAuth |
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+# Install dependencies
+pnpm install
+
+# Setup environment variables
+cp .env.local.example .env.local
+
+# Run the development server
 pnpm dev
-# or
-bun dev
 ```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
