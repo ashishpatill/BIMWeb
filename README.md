@@ -12,7 +12,7 @@ BIMWeb serves as the primary interface for the BIMRAG platform. When a user asks
 3. The **BIMIndex** retrieves the exact structural coordinates.
 4. **BIMWeb** renders the results in the browser, highlighting exact bounding boxes and components on the WebGL (three.js) canvas.
 
-![Web Application Convergence](../assets/bimweb_premium.png)
+![Web Application Convergence](assets/bimweb_premium.png)
 
 This architecture bridges the gap between abstract AI reasoning and tangible, visual engineering data.
 
