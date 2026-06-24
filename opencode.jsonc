@@ -1,0 +1,57 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "viewer": {
+      "description": "3D Viewer specialist — implement real WebGL/three.js model viewer for BIM",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "You are a BIM visualization engineer. Implement real WebGL-based 3D viewers using three.js. Focus on orbit controls, model loading (glTF/IFC/OBJ), layer toggling, measurement tools, and performance optimization.",
+      "tools": {
+        "write": true,
+        "edit": true,
+        "bash": true
+      }
+    },
+    "dashboard": {
+      "description": "Dashboard & UI specialist — build Next.js App Router pages, layouts, and shadcn/ui components",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "You are a Next.js frontend engineer. Build pages, layouts, server/client components, and shadcn/ui-based UI. Follow dark theme conventions with glass-panel patterns. Use framer-motion for animations and lucide-react for icons.",
+      "tools": {
+        "write": true,
+        "edit": true,
+        "bash": true
+      }
+    },
+    "db": {
+      "description": "Database & server actions specialist — Drizzle ORM, Neon Postgres, server actions",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "You are a database engineer. Handle Drizzle ORM schema, migrations, relations, server actions, and Kinde auth integration. Use 'use server' directives, drizzle-orm queries, and proper error handling. Never leak credentials or allow SQL injection.",
+      "tools": {
+        "write": true,
+        "edit": true,
+        "bash": true
+      }
+    }
+  },
+  "default_agent": "build",
+  "command": {
+    "dev": {
+      "template": "Run the dev server and check for build/lint errors.",
+      "description": "Start dev server",
+      "agent": "build"
+    },
+    "lint": {
+      "template": "Run lint check and fix any auto-fixable issues.",
+      "description": "Run linter",
+      "agent": "build"
+    },
+    "build": {
+      "template": "Run a full production build and report any errors.",
+      "description": "Build project",
+      "agent": "build"
+    }
+  },
+  "instructions": ["AGENTS.md"],
+  "snapshot": true,
+  "formatter": true,
+  "lsp": true
+}

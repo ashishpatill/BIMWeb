@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# debug artifacts
+test-db.ts
+drizzle-migrate.log
+drizzle-push.log
+
+# local uploads
+public/uploads/*
