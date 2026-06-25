@@ -1,10 +1,30 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "agent": {
+    "build": {
+      "description": "Default builder — uses ROUTING.md for model selection",
+      "model": "opencode/deepseek-v4-pro",
+      "prompt": "You are a full-stack BIM engineer. Before starting any task, read ROUTING.md and AGENTS.md to select the correct model tier. Use the offload scoring formula to determine whether to use Flash, Flash→Pro, or Pro. For security-sensitive code, always use Pro verify. For exposed credentials, use local Nanbeige-3B only.",
+      "tools": {
+        "write": true,
+        "edit": true,
+        "bash": true
+      }
+    },
+    "flash": {
+      "description": "Cheap throughput agent for bounded, low-risk tasks",
+      "model": "opencode-go/deepseek-v4-flash",
+      "prompt": "You are a fast BIM engineer for bounded implementation tasks. Read ROUTING.md — you are the 'flash' tier. Handle standard Next.js patterns, SDK wiring, test scaffolding, docs, and CI/CD. If a task requires architectural decisions or has system blast radius, stop and escalate to the Pro agent.",
+      "tools": {
+        "write": true,
+        "edit": true,
+        "bash": true
+      }
+    },
     "viewer": {
-      "description": "3D Viewer specialist — implement real WebGL/three.js model viewer for BIM",
-      "model": "anthropic/claude-sonnet-4-5",
-      "prompt": "You are a BIM visualization engineer. Implement real WebGL-based 3D viewers using three.js. Focus on orbit controls, model loading (glTF/IFC/OBJ), layer toggling, measurement tools, and performance optimization.",
+      "description": "3D Viewer specialist — three.js WebGL features",
+      "model": "opencode-go/qwen3.5-plus",
+      "prompt": "You are a BIM visualization engineer. Implement real WebGL-based 3D viewers using three.js. Focus on orbit controls, model loading (glTF/IFC/OBJ), layer toggling, measurement tools, section cuts, and performance optimization. Use Qwen3.5 Plus — its I.90 coding score is optimal for complex JS/TS three.js features.",
       "tools": {
         "write": true,
         "edit": true,
@@ -12,9 +32,9 @@
       }
     },
     "dashboard": {
-      "description": "Dashboard & UI specialist — build Next.js App Router pages, layouts, and shadcn/ui components",
-      "model": "anthropic/claude-sonnet-4-5",
-      "prompt": "You are a Next.js frontend engineer. Build pages, layouts, server/client components, and shadcn/ui-based UI. Follow dark theme conventions with glass-panel patterns. Use framer-motion for animations and lucide-react for icons.",
+      "description": "Dashboard & UI specialist — Next.js, shadcn/ui",
+      "model": "opencode-go/deepseek-v4-flash",
+      "prompt": "You are a Next.js frontend engineer. Build pages, layouts, server/client components, and shadcn/ui-based UI. Follow dark theme conventions with glass-panel patterns. Use framer-motion for animations and lucide-react for icons. This is flash-tier work — standard patterns, bounded scope.",
       "tools": {
         "write": true,
         "edit": true,
@@ -22,12 +42,22 @@
       }
     },
     "db": {
-      "description": "Database & server actions specialist — Drizzle ORM, Neon Postgres, server actions",
-      "model": "anthropic/claude-sonnet-4-5",
-      "prompt": "You are a database engineer. Handle Drizzle ORM schema, migrations, relations, server actions, and Kinde auth integration. Use 'use server' directives, drizzle-orm queries, and proper error handling. Never leak credentials or allow SQL injection.",
+      "description": "Database & server actions — Drizzle ORM, Neon, Kinde auth",
+      "model": "opencode-go/deepseek-v4-flash",
+      "prompt": "You are a database engineer. Handle Drizzle ORM schema, migrations, relations, server actions, and Kinde auth integration. Use 'use server' directives, drizzle-orm queries, and proper error handling. Never leak credentials or allow SQL injection. For security-critical authZ code, write the implementation and flag it for Pro verify.",
       "tools": {
         "write": true,
         "edit": true,
+        "bash": true
+      }
+    },
+    "plan": {
+      "description": "Planning agent — architecture, decomposition, routing decisions",
+      "model": "opencode/deepseek-v4-pro",
+      "prompt": "You are a BIM platform architect. Read ROUTING.md and AGENTS.md. Decompose tasks into bounded subtasks with file boundaries. Compute offload scores per subtask. Assign model tiers. Verify eligibility before implementation. Do not write code — only produce structured plans.",
+      "tools": {
+        "write": false,
+        "edit": false,
         "bash": true
       }
     }
@@ -42,7 +72,7 @@
     "lint": {
       "template": "Run lint check and fix any auto-fixable issues.",
       "description": "Run linter",
-      "agent": "build"
+      "agent": "flash"
     },
     "build": {
       "template": "Run a full production build and report any errors.",
@@ -50,7 +80,7 @@
       "agent": "build"
     }
   },
-  "instructions": ["AGENTS.md"],
+  "instructions": ["AGENTS.md", "ROUTING.md"],
   "snapshot": true,
   "formatter": true,
   "lsp": true

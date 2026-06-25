@@ -12,6 +12,15 @@ pnpm drizzle-kit push  # Push schema to DB
 pnpm drizzle-kit generate  # Generate migration
 ```
 
+## Model Routing
+
+**Before any task, read `ROUTING.md` to select the correct model.**
+- Compute offload = (blast×3 + ambig×2 + quality×2) / verification
+- < 3: free | 3–5: DeepSeek V4 Flash | 5–7: Flash write + Pro verify | > 7: DeepSeek V4 Pro
+- **Security/auth code → Pro verify mandatory.**
+- **Exposed credentials → local Nanbeige-3B only.**
+- **three.js features → Qwen3 Coder Plus (I.90 best for JS/TS).**
+
 ## Architecture
 
 - **App Router**: `src/app/` — server components fetch data, pass to `*-client.tsx` client components
@@ -20,18 +29,15 @@ pnpm drizzle-kit generate  # Generate migration
 - **Auth**: Kinde via `@kinde-oss/kinde-auth-nextjs/server` — `getKindeServerSession()` → `getUser()`
 - **Components**: shadcn/ui primitives in `src/components/ui/`, app components in `src/components/`
 - **Dashboard**: `src/app/dashboard/` with sub-routes: projects, models, team, settings
-- **3D Viewer**: `src/components/mock-viewer.tsx` — currently CSS-3D mock, target is three.js WebGL
+- **3D Viewer**: `src/components/viewer/model-viewer.tsx` — three.js WebGL with OrbitControls (already implemented)
 
-## Remaining Work (Priority Order)
+## Task List
 
-1. **Real 3D WebGL viewer** — install three.js + OrbitControls, replace `mock-viewer.tsx`, load glTF/IFC models
-2. **Real file upload** — integrate Vercel Blob / UploadThing / S3 for actual model file storage, wire into `createModel`
-3. **Project detail page** — `src/app/dashboard/projects/[id]/page.tsx` with model list, team, settings tabs
-4. **Delete/edit actions** — `deleteProject`, `updateProject`, `deleteModel`, `removeTeamMember` server actions + UI
-5. **RBAC enforcement** — respect `teamMembers.role` in server actions for project access control
-6. **Actual team invites** — Kinde org invite or sendgrid/resend email for real invitations
-7. **Tests** — component + e2e tests
-8. **Project documentation** — update README, add ROADMAP.md
+Full detailed specs, implementation steps, and model assignments for all 14 remaining tasks are in **`TASKS.md`**.
+
+Priority order: T-WEB-1 (tests) → T-WEB-2 (error boundaries) → T-WEB-3 (file storage) → T-WEB-4 (email) → T-WEB-5 (audit) → T-WEB-6 (RBAC) → T-WEB-7 (sharing) → T-WEB-10 (CI/CD) → T-WEB-11 (analytics) → T-WEB-8 (IFC) → T-WEB-9 (measurements) → T-WEB-13 (API) → T-WEB-12 (workspaces) → T-WEB-14 (ecosystem).
+
+Before starting any task, read `ROUTING.md` to select the correct model.
 
 ## Code Standards
 
