@@ -1,12 +1,21 @@
 "use client";
 
 import { useRef, useEffect, useState, useCallback } from "react";
-import { Compass, RotateCcw } from "lucide-react";
-import type * as THREE from "three";
+import { Compass, RotateCcw, Ruler, Scissors, TreePine } from "lucide-react";
+import * as THREE from "three";
+import { MeasurementManager } from "./measurement-tools";
+import { SectionPlaneManager } from "./section-plane";
 
 interface ModelViewerProps {
   modelName?: string;
   modelUrl?: string | null;
+}
+
+interface ModelTreeItem {
+  name: string;
+  id: string;
+  layer: number;
+  children?: { name: string; id: string; layer: number }[];
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -24,8 +33,43 @@ export function ModelViewer({ modelName = "BIM Model", modelUrl = null }: ModelV
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<ViewerRef | null>(null);
+  const measurementManagerRef = useRef<MeasurementManager | null>(null);
+  const sectionPlaneManagerRef = useRef<SectionPlaneManager | null>(null);
   const [activeLayer, setActiveLayer] = useState("all");
   const [isLoaded, setIsLoaded] = useState(false);
+  const [measureMode, setMeasureMode] = useState(false);
+  const [sectionAxis, setSectionAxis] = useState<"x" | "y" | "z" | null>(null);
+  const [showModelTree, setShowModelTree] = useState(false);
+  const [selectedElement, setSelectedElement] = useState<string | null>(null);
+  const [modelTree, setModelTree] = useState<ModelTreeItem[]>([]);
+
+  const handleCanvasClick = useCallback((e: MouseEvent) => {
+    if (!measureMode || !sceneRef.current || !measurementManagerRef.current) return;
+    const { camera } = sceneRef.current;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    measurementManagerRef.current.onMouseClick(e, camera, canvas);
+  }, [measureMode]);
+
+  const highlightElement = useCallback((layer: number | null) => {
+    if (!sceneRef.current) return;
+    const { scene } = sceneRef.current;
+    scene.children.forEach((child) => {
+      if (child instanceof THREE.Mesh || child instanceof THREE.LineSegments) {
+        const mat = (child as THREE.Mesh).material as THREE.MeshPhysicalMaterial | THREE.MeshStandardMaterial | null;
+        if (mat && !Array.isArray(mat) && "emissive" in mat) {
+          const m = mat as THREE.MeshPhysicalMaterial;
+          if (layer !== null && child.layers.isEnabled(layer)) {
+            m.emissive = new THREE.Color(0x4488ff);
+            m.emissiveIntensity = 0.3;
+          } else {
+            m.emissive = new THREE.Color(0x000000);
+            m.emissiveIntensity = 0;
+          }
+        }
+      }
+    });
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -117,6 +161,23 @@ export function ModelViewer({ modelName = "BIM Model", modelUrl = null }: ModelV
       }
 
       sceneRef.current = { scene, camera, renderer, controls, buildingGroup };
+
+      // Initialize measurement manager
+      measurementManagerRef.current = new MeasurementManager(scene);
+
+      // Initialize section plane manager
+      sectionPlaneManagerRef.current = new SectionPlaneManager(renderer);
+
+      // Build model tree from scene hierarchy
+      const tree: ModelTreeItem[] = [
+        { name: "Glass Envelope", id: "glass", layer: 0 },
+        { name: "Structural Columns", id: "columns", layer: 1 },
+        { name: "Floor Slabs", id: "floors", layer: 2 },
+        { name: "Core / MEP", id: "core", layer: 3 },
+        { name: "Wireframe", id: "wireframe", layer: -1 },
+        { name: "Grid Ground", id: "ground", layer: -2 },
+      ];
+      setModelTree(tree);
 
       animate();
       setIsLoaded(true);
@@ -339,6 +400,41 @@ export function ModelViewer({ modelName = "BIM Model", modelUrl = null }: ModelV
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Measurement click handler
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (measureMode) {
+      canvas.style.cursor = "crosshair";
+      canvas.addEventListener("click", handleCanvasClick);
+    } else {
+      canvas.style.cursor = "grab";
+      canvas.removeEventListener("click", handleCanvasClick);
+    }
+    return () => {
+      canvas.removeEventListener("click", handleCanvasClick);
+    };
+  }, [measureMode, handleCanvasClick]);
+
+  // Section plane effects
+  useEffect(() => {
+    if (!sectionPlaneManagerRef.current || !sceneRef.current) return;
+    const mgr = sectionPlaneManagerRef.current;
+    mgr.clearPlanes();
+    if (sectionAxis) {
+      mgr.addPlane(sectionAxis, 0);
+      const { buildingGroup } = sceneRef.current;
+      buildingGroup.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          const mat = child.material;
+          if (!Array.isArray(mat)) {
+            mgr.applyToMaterial(mat);
+          }
+        }
+      });
+    }
+  }, [sectionAxis]);
+
   const resetView = useCallback(() => {
     if (!sceneRef.current) return;
     const { camera, controls } = sceneRef.current;
@@ -367,6 +463,27 @@ export function ModelViewer({ modelName = "BIM Model", modelUrl = null }: ModelV
     controls.update();
   }, []);
 
+  const toggleMeasureMode = useCallback(() => {
+    setMeasureMode((prev) => !prev);
+  }, []);
+
+  const toggleSectionAxis = useCallback((axis: "x" | "y" | "z") => {
+    setSectionAxis((prev) => (prev === axis ? null : axis));
+  }, []);
+
+  const toggleModelTree = useCallback(() => {
+    setShowModelTree((prev) => !prev);
+  }, []);
+
+  const handleTreeItemClick = useCallback((item: ModelTreeItem) => {
+    setSelectedElement(item.id);
+    if (item.layer >= 0) {
+      highlightElement(item.layer);
+    } else {
+      highlightElement(null);
+    }
+  }, [highlightElement]);
+
   return (
     <div
       ref={containerRef}
@@ -382,12 +499,36 @@ export function ModelViewer({ modelName = "BIM Model", modelUrl = null }: ModelV
           {modelName}
         </h4>
         {isLoaded && (
-          <span className="text-[10px] text-zinc-500 font-mono">Click & drag to orbit</span>
+          <span className="text-[10px] text-zinc-500 font-mono">
+            {measureMode ? "Click two points to measure" : "Click & drag to orbit"}
+          </span>
         )}
       </div>
 
       {/* Top Right Controls */}
       <div className="absolute top-4 right-4 z-20 flex gap-2">
+        <button
+          onClick={toggleMeasureMode}
+          className={`p-2 border rounded-lg transition-colors ${
+            measureMode
+              ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
+              : "bg-white/5 border-white/5 text-zinc-400 hover:text-white hover:bg-white/10"
+          }`}
+          title="Measure Tool"
+        >
+          <Ruler className="w-4 h-4" />
+        </button>
+        <button
+          onClick={toggleModelTree}
+          className={`p-2 border rounded-lg transition-colors ${
+            showModelTree
+              ? "bg-primary/20 border-primary/40 text-primary"
+              : "bg-white/5 border-white/5 text-zinc-400 hover:text-white hover:bg-white/10"
+          }`}
+          title="Model Tree"
+        >
+          <TreePine className="w-4 h-4" />
+        </button>
         <button
           onClick={resetView}
           className="p-2 bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 rounded-lg text-zinc-400 hover:text-white transition-colors"
@@ -411,6 +552,48 @@ export function ModelViewer({ modelName = "BIM Model", modelUrl = null }: ModelV
         </button>
       </div>
 
+      {/* Model Tree Sidebar */}
+      {showModelTree && (
+        <div className="absolute left-4 top-16 z-20 w-56 max-h-[70%] overflow-y-auto bg-zinc-900/90 backdrop-blur-md border border-white/5 rounded-xl p-3">
+          <h5 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-2">Model Tree</h5>
+          <div className="space-y-1">
+            {modelTree.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => handleTreeItemClick(item)}
+                className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-all ${
+                  selectedElement === item.id
+                    ? "bg-primary/20 text-primary border border-primary/20"
+                    : "text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent"
+                }`}
+              >
+                {item.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Section Plane Controls */}
+      {sectionAxis && (
+        <div className="absolute left-4 bottom-20 z-20 flex gap-1 bg-zinc-900/80 backdrop-blur-md border border-white/5 rounded-lg p-1.5">
+          <span className="text-[10px] text-zinc-500 uppercase font-semibold px-1 self-center">Clip:</span>
+          {(["x", "y", "z"] as const).map((axis) => (
+            <button
+              key={axis}
+              onClick={() => toggleSectionAxis(axis)}
+              className={`px-2 py-1 rounded text-xs font-mono font-semibold transition-colors ${
+                sectionAxis === axis
+                  ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                  : "text-zinc-500 hover:text-white"
+              }`}
+            >
+              {axis.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Loading overlay */}
       {!isLoaded && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-zinc-950/80">
@@ -429,6 +612,23 @@ export function ModelViewer({ modelName = "BIM Model", modelUrl = null }: ModelV
         <div className="flex items-center gap-2 pointer-events-auto">
           <Compass className="w-4 h-4 text-zinc-500" />
           <span className="text-xs font-semibold text-zinc-400">Orbit Controls</span>
+          <div className="flex gap-1 ml-2">
+            {(["x", "y", "z"] as const).map((axis) => (
+              <button
+                key={axis}
+                onClick={() => toggleSectionAxis(axis)}
+                className={`px-2 py-1 rounded text-xs font-mono font-semibold transition-colors ${
+                  sectionAxis === axis
+                    ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                    : "bg-white/5 text-zinc-500 hover:text-white border border-transparent"
+                }`}
+                title={`Section ${axis.toUpperCase()}`}
+              >
+                <Scissors className="w-3 h-3 inline mr-0.5" />
+                {axis.toUpperCase()}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="flex gap-2 pointer-events-auto">
