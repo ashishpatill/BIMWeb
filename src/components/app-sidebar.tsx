@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Home, FolderOpen, Settings, Users, LogOut } from "lucide-react";
+import { Box, Home, FolderOpen, Settings, Users, LogOut, Search, Rocket } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
@@ -20,6 +20,8 @@ const navigation = [
   { name: "Overview", href: "/dashboard", icon: Home },
   { name: "Projects", href: "/dashboard/projects", icon: FolderOpen },
   { name: "Models", href: "/dashboard/models", icon: Box },
+  { name: "Search", href: "/dashboard/search", icon: Search },
+  { name: "Deployments", href: "/dashboard/deployments", icon: Rocket },
   { name: "Team", href: "/dashboard/team", icon: Users },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
