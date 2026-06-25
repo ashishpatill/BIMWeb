@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/db";
-import { users, projects, models, teamMembers } from "@/db/schema";
+import { users, projects, models, teamMembers, workspaces } from "@/db/schema";
 import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
 import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
