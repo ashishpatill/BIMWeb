@@ -1,10 +1,29 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { FolderGit2, Plus, Search, Calendar, ChevronRight, Loader2, Trash2, Pencil } from "lucide-react";
+import { toast } from "sonner";
+import {
+  FolderGit2,
+  Plus,
+  Search,
+  MoreHorizontal,
+  ExternalLink,
+  Pencil,
+  Copy,
+  Share2,
+  Trash2,
+  LayoutGrid,
+  Table2,
+  ArrowUpDown,
+  Calendar,
+  Users,
+  CuboidIcon,
+  Loader2,
+  FolderOpen,
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,255 +38,758 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { createProject, deleteProject, updateProject } from "@/lib/actions";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { PageHeader, EmptyState, ConfirmDialog } from "@/components/common";
+import {
+  createProject,
+  deleteProject as deleteProjectAction,
+  updateProject,
+} from "@/lib/actions";
 
-interface Project {
+export interface ProjectWithDetails {
   id: number;
   name: string;
   description: string | null;
+  ownerId: string;
+  workspaceId: number | null;
   createdAt: Date;
+  modelCount: number;
+  memberCount: number;
+  ownerName: string;
 }
 
 interface ProjectsClientProps {
-  initialProjects: Project[];
+  initialProjects: ProjectWithDetails[];
 }
 
 export function ProjectsClient({ initialProjects }: ProjectsClientProps) {
   const router = useRouter();
+
+  // Search & sort & view
   const [search, setSearch] = useState("");
+  const [sort, setSort] = useState("recent");
+  const [view, setView] = useState<"grid" | "table">("grid");
 
-  const [isOpen, setIsOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [isPending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
+  // Create dialog
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createName, setCreateName] = useState("");
+  const [createDescription, setCreateDescription] = useState("");
+  const [createPending, startCreateTransition] = useTransition();
 
-  const [editProject, setEditProject] = useState<Project | null>(null);
+  // Edit dialog
+  const [editTarget, setEditTarget] = useState<ProjectWithDetails | null>(null);
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
-  const [editIsPending, startEditTransition] = useTransition();
+  const [editPending, startEditTransition] = useTransition();
 
-  const [deleteProjectId, setDeleteProjectId] = useState<number | null>(null);
-  const [deleteIsPending, startDeleteTransition] = useTransition();
+  // Delete confirm
+  const [deleteTarget, setDeleteTarget] =
+    useState<ProjectWithDetails | null>(null);
+  const [deletePending, startDeleteTransition] = useTransition();
 
-  const filteredProjects = initialProjects.filter((project) =>
-    project.name.toLowerCase().includes(search.toLowerCase()) ||
-    (project.description && project.description.toLowerCase().includes(search.toLowerCase()))
+  // Filter & sort
+  const filteredProjects = useMemo(() => {
+    const result = initialProjects.filter(
+      (p) =>
+        p.name.toLowerCase().includes(search.toLowerCase()) ||
+        (p.description ?? "").toLowerCase().includes(search.toLowerCase()),
+    );
+
+    switch (sort) {
+      case "name":
+        result.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case "models":
+        result.sort((a, b) => b.modelCount - a.modelCount);
+        break;
+      case "recent":
+      default:
+        result.sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() -
+            new Date(a.createdAt).getTime(),
+        );
+        break;
+    }
+
+    return result;
+  }, [initialProjects, search, sort]);
+
+  const hasProjects = initialProjects.length > 0;
+
+  // Handlers
+  const handleCreate = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!createName.trim()) return;
+      startCreateTransition(async () => {
+        const res = await createProject(createName, createDescription);
+        if (res.success) {
+          toast.success("Project created successfully");
+          setCreateOpen(false);
+          setCreateName("");
+          setCreateDescription("");
+          router.refresh();
+        } else {
+          toast.error(res.error ?? "Failed to create project");
+        }
+      });
+    },
+    [createName, createDescription, router],
   );
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-    setError(null);
-    startTransition(async () => {
-      const res = await createProject(name, description);
+  const handleEdit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!editTarget || !editName.trim()) return;
+      startEditTransition(async () => {
+        const res = await updateProject(editTarget.id, editName, editDescription);
+        if (res.success) {
+          toast.success("Project updated successfully");
+          setEditTarget(null);
+          router.refresh();
+        } else {
+          toast.error(res.error ?? "Failed to update project");
+        }
+      });
+    },
+    [editTarget, editName, editDescription, router],
+  );
+
+  const handleDeleteConfirm = useCallback(() => {
+    if (!deleteTarget) return;
+    startDeleteTransition(async () => {
+      const res = await deleteProjectAction(deleteTarget.id);
       if (res.success) {
-        setIsOpen(false);
-        setName("");
-        setDescription("");
+        toast.success("Project deleted permanently");
+        setDeleteTarget(null);
         router.refresh();
       } else {
-        setError(res.error || "Something went wrong");
+        toast.error(res.error ?? "Failed to delete project");
       }
     });
-  };
+  }, [deleteTarget, router]);
 
-  const handleEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editProject || !editName.trim()) return;
-    startEditTransition(async () => {
-      const res = await updateProject(editProject.id, editName, editDescription);
+  const handleDuplicate = useCallback(
+    async (project: ProjectWithDetails) => {
+      const res = await createProject(
+        `${project.name} (Copy)`,
+        project.description ?? undefined,
+      );
       if (res.success) {
-        setEditProject(null);
+        toast.success("Project duplicated");
         router.refresh();
+      } else {
+        toast.error(res.error ?? "Failed to duplicate project");
       }
-    });
-  };
+    },
+    [router],
+  );
 
-  const handleDelete = async (projectId: number) => {
-    startDeleteTransition(async () => {
-      const res = await deleteProject(projectId);
-      if (res.success) {
-        setDeleteProjectId(null);
-        router.refresh();
-      }
-    });
-  };
+  const handleShare = useCallback(() => {
+    toast.info("Share this project from the project detail page");
+  }, []);
+
+  const openEdit = useCallback((project: ProjectWithDetails) => {
+    setEditTarget(project);
+    setEditName(project.name);
+    setEditDescription(project.description ?? "");
+  }, []);
 
   return (
-    <div className="flex flex-col gap-8 pb-10">
-      {/* Header section */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-white mb-2">Projects</h1>
-          <p className="text-zinc-400">Manage and coordinate your Building Information Models.</p>
+    <div className="flex flex-col gap-6 pb-10">
+      {/* Header */}
+      <PageHeader
+        title="Projects"
+        description="Manage and coordinate your Building Information Models."
+        breadcrumbs={[{ label: "Projects" }]}
+        primaryAction={
+          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+            <DialogTrigger render={<Button className="gap-2"><Plus className="size-4" />New project</Button>} />
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <FolderGit2 className="size-5 text-primary" />
+                  Create New Project
+                </DialogTitle>
+                <DialogDescription>
+                  Create a container for your BIM models, documentation, and
+                  team collaborators.
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleCreate} className="space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="create-name">Project Name</Label>
+                  <Input
+                    id="create-name"
+                    placeholder="e.g. Skyline Residency"
+                    value={createName}
+                    onChange={(e) => setCreateName(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="create-description">Description</Label>
+                  <Textarea
+                    id="create-description"
+                    placeholder="Describe project details, building phases, or requirements..."
+                    value={createDescription}
+                    onChange={(e) => setCreateDescription(e.target.value)}
+                    className="min-h-[100px]"
+                  />
+                </div>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setCreateOpen(false)}
+                    disabled={createPending}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={createPending || !createName.trim()}
+                  >
+                    {createPending ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin" />
+                        Creating...
+                      </>
+                    ) : (
+                      "Create Project"
+                    )}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        }
+      />
+
+      {/* Toolbar */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search projects by name or description..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
         </div>
-
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogTrigger render={<Button className="w-full sm:w-auto px-6 py-5 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl flex items-center justify-center gap-2 shadow-[0_0_30px_rgba(var(--primary),0.3)] transition-all hover:scale-105 active:scale-95" />}>
-            <Plus className="w-5 h-5" />
-            New Project
-          </DialogTrigger>
-          <DialogContent className="glass-panel border border-white/10 bg-zinc-950/95 text-white max-w-md rounded-2xl p-6">
-            <DialogHeader className="mb-4">
-              <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
-                <FolderGit2 className="text-primary w-6 h-6" /> Create New Project
-              </DialogTitle>
-              <DialogDescription className="text-zinc-400">
-                Create a container for your BIM models, documentation, and team collaborators.
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div className="space-y-2">
-                <Label htmlFor="name" className="text-sm font-semibold text-zinc-300">Project Name</Label>
-                <Input id="name" placeholder="e.g. Skyline Residency" value={name} onChange={(e) => setName(e.target.value)}
-                  className="bg-white/5 border-white/10 text-white rounded-xl focus:border-primary/50 focus:ring-1 focus:ring-primary/50" required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="description" className="text-sm font-semibold text-zinc-300">Description</Label>
-                <Textarea id="description" placeholder="Describe project details, building phases, or requirements..."
-                  value={description} onChange={(e) => setDescription(e.target.value)}
-                  className="bg-white/5 border-white/10 text-white rounded-xl focus:border-primary/50 focus:ring-1 focus:ring-primary/50 min-h-[100px]" />
-              </div>
-              {error && <p className="text-sm font-semibold text-red-400 mt-2">{error}</p>}
-              <DialogFooter className="mt-6 flex flex-col sm:flex-row gap-2">
-                <Button type="button" variant="ghost" onClick={() => setIsOpen(false)}
-                  className="w-full sm:w-auto rounded-xl border border-white/5 text-zinc-400 hover:text-white hover:bg-white/5">Cancel</Button>
-                <Button type="submit" disabled={isPending || !name.trim()}
-                  className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl flex items-center justify-center gap-2">
-                  {isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating...</> : "Create Project"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <div className="flex items-center gap-2">
+          <Select
+            value={sort}
+            onValueChange={(value) => {
+              if (value) setSort(value);
+            }}
+          >
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <SelectTrigger aria-label="Sort projects" className="w-[140px]">
+                    <ArrowUpDown className="size-3.5" />
+                    <SelectValue />
+                  </SelectTrigger>
+                }
+              />
+              <TooltipContent>Sort order</TooltipContent>
+            </Tooltip>
+            <SelectContent>
+              <SelectItem value="recent">Recent</SelectItem>
+              <SelectItem value="name">Name</SelectItem>
+              <SelectItem value="models">Models count</SelectItem>
+            </SelectContent>
+          </Select>
+          <div className="flex items-center rounded-lg border border-input p-0.5">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant={view === "grid" ? "secondary" : "ghost"}
+                    size="sm"
+                    className="size-7 p-0"
+                    onClick={() => setView("grid")}
+                    aria-label="Grid view"
+                  >
+                    <LayoutGrid className="size-3.5" />
+                  </Button>
+                }
+              />
+              <TooltipContent>Grid view</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant={view === "table" ? "secondary" : "ghost"}
+                    size="sm"
+                    className="size-7 p-0"
+                    onClick={() => setView("table")}
+                    aria-label="Table view"
+                  >
+                    <Table2 className="size-3.5" />
+                  </Button>
+                }
+              />
+              <TooltipContent>Table view</TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-md w-full">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
-        <Input placeholder="Search projects..." value={search} onChange={(e) => setSearch(e.target.value)}
-          className="pl-11 bg-white/5 border-white/10 text-white rounded-xl focus:border-primary/50 focus:ring-1 focus:ring-primary/50 w-full" />
-      </div>
-
-      {/* Projects Grid */}
-      {filteredProjects.length === 0 ? (
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-          className="glass-panel p-10 h-72 flex flex-col items-center justify-center text-center gap-4 border border-white/5 rounded-2xl">
-          <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-2">
-            <FolderGit2 className="w-8 h-8 text-zinc-500" />
-          </div>
-          <div>
-            <h3 className="text-lg font-medium text-white mb-1">No Projects Found</h3>
-            <p className="text-sm text-zinc-400 max-w-sm mx-auto">
-              {search ? "No projects match your search query." : "Create your first project to get started with BIMWeb."}
-            </p>
-          </div>
-        </motion.div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <AnimatePresence>
+      {/* Content: empty states or cards/table */}
+      {!hasProjects && !search ? (
+        <EmptyState
+          icon={FolderGit2}
+          title="Create your first project"
+          description="Get started by creating a project to organize your BIM models and collaborate with your team."
+          primaryAction={{
+            label: "Create project",
+            onClick: () => setCreateOpen(true),
+          }}
+        />
+      ) : filteredProjects.length === 0 && search ? (
+        <EmptyState
+          icon={FolderOpen}
+          title={`No projects match "${search}"`}
+          description="Try adjusting your search query or create a new project."
+          primaryAction={{
+            label: "Clear search",
+            onClick: () => setSearch(""),
+          }}
+        />
+      ) : view === "grid" ? (
+        /* ── Grid view ── */
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+          <AnimatePresence mode="popLayout">
             {filteredProjects.map((project, index) => (
-              <motion.div key={project.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.4, delay: index * 0.05 }}>
-                <Card className="glass-panel overflow-hidden relative group hover:border-primary/30 transition-colors duration-300 rounded-2xl border border-white/5 flex flex-col justify-between h-56">
-                  <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-                  <CardContent className="p-6 relative z-10 flex flex-col justify-between h-full">
-                    <div>
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20">
-                          <FolderGit2 className="w-5 h-5 text-primary" />
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <button onClick={(e) => { e.stopPropagation(); setEditProject(project); setEditName(project.name); setEditDescription(project.description || ""); }}
-                            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 text-zinc-400 hover:text-white transition-all opacity-0 group-hover:opacity-100"
-                            title="Edit project">
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button onClick={(e) => { e.stopPropagation(); setDeleteProjectId(project.id); }}
-                            className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 hover:text-red-300 transition-all opacity-0 group-hover:opacity-100"
-                            title="Delete project">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                          <div className="text-xs font-semibold text-zinc-500 flex items-center gap-1.5 bg-white/5 px-2.5 py-1 rounded-full border border-white/5">
-                            <Calendar className="w-3.5 h-3.5 text-zinc-400" />
-                            {new Date(project.createdAt).toLocaleDateString()}
-                          </div>
-                        </div>
-                      </div>
-                      <h3 className="text-xl font-bold text-white tracking-tight mb-2 truncate group-hover:text-primary transition-colors">
-                        {project.name}
-                      </h3>
-                      <p className="text-sm font-medium text-zinc-400 line-clamp-2">
-                        {project.description || "No description provided."}
-                      </p>
-                    </div>
-
-                    <Link href={`/dashboard/projects/${project.id}`} className="mt-4 pt-4 border-t border-white/5 flex justify-between items-center text-xs font-medium text-primary hover:text-primary/80 transition-colors">
-                      <span>View details</span>
-                      <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                    </Link>
-                  </CardContent>
-                </Card>
+              <motion.div
+                key={project.id}
+                layout
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ duration: 0.3, delay: index * 0.04 }}
+              >
+                <ProjectGridCard
+                  project={project}
+                  onEdit={() => openEdit(project)}
+                  onDelete={() => setDeleteTarget(project)}
+                  onDuplicate={() => handleDuplicate(project)}
+                  onShare={handleShare}
+                />
               </motion.div>
             ))}
           </AnimatePresence>
         </div>
+      ) : (
+        /* ── Table view ── */
+        <div className="overflow-x-auto rounded-xl border border-input">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-input bg-muted/50">
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                  Name
+                </th>
+                <th className="hidden px-4 py-3 text-left font-medium text-muted-foreground sm:table-cell">
+                  Models
+                </th>
+                <th className="hidden px-4 py-3 text-left font-medium text-muted-foreground md:table-cell">
+                  Members
+                </th>
+                <th className="hidden px-4 py-3 text-left font-medium text-muted-foreground lg:table-cell">
+                  Owner
+                </th>
+                <th className="hidden px-4 py-3 text-left font-medium text-muted-foreground sm:table-cell">
+                  Created
+                </th>
+                <th className="px-4 py-3 text-right font-medium text-muted-foreground">
+                  <span className="sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <AnimatePresence mode="popLayout">
+                {filteredProjects.map((project) => (
+                  <TableRow
+                    key={project.id}
+                    project={project}
+                    onEdit={() => openEdit(project)}
+                    onDelete={() => setDeleteTarget(project)}
+                    onDuplicate={() => handleDuplicate(project)}
+                    onShare={handleShare}
+                  />
+                ))}
+              </AnimatePresence>
+              {filteredProjects.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="px-4 py-12 text-center text-muted-foreground"
+                  >
+                    No projects to display.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {/* Edit Dialog */}
-      <Dialog open={editProject !== null} onOpenChange={(open) => { if (!open) setEditProject(null); }}>
-        <DialogContent className="glass-panel border border-white/10 bg-zinc-950/95 text-white max-w-md rounded-2xl p-6">
-          <DialogHeader className="mb-4">
-            <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
-              <Pencil className="text-primary w-5 h-5" /> Edit Project
+      <Dialog
+        open={editTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="size-5 text-primary" />
+              Edit Project
             </DialogTitle>
-            <DialogDescription className="text-zinc-400">Update the project name or description.</DialogDescription>
+            <DialogDescription>
+              Update the project name or description.
+            </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleEditSubmit} className="space-y-5">
+          <form onSubmit={handleEdit} className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="edit-name" className="text-sm font-semibold text-zinc-300">Project Name</Label>
-              <Input id="edit-name" value={editName} onChange={(e) => setEditName(e.target.value)}
-                className="bg-white/5 border-white/10 text-white rounded-xl focus:border-primary/50" required />
+              <Label htmlFor="edit-name">Project Name</Label>
+              <Input
+                id="edit-name"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                required
+              />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-description" className="text-sm font-semibold text-zinc-300">Description</Label>
-              <Textarea id="edit-description" value={editDescription} onChange={(e) => setEditDescription(e.target.value)}
-                className="bg-white/5 border-white/10 text-white rounded-xl focus:border-primary/50 min-h-[100px]" />
+              <Label htmlFor="edit-description">Description</Label>
+              <Textarea
+                id="edit-description"
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                className="min-h-[100px]"
+              />
             </div>
-            <DialogFooter className="mt-6 flex flex-col sm:flex-row gap-2">
-              <Button type="button" variant="ghost" onClick={() => setEditProject(null)}
-                className="w-full sm:w-auto rounded-xl border border-white/5 text-zinc-400 hover:text-white hover:bg-white/5">Cancel</Button>
-              <Button type="submit" disabled={editIsPending || !editName.trim()}
-                className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl">
-                {editIsPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : "Save Changes"}
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditTarget(null)}
+                disabled={editPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={editPending || !editName.trim()}
+              >
+                {editPending ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save Changes"
+                )}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteProjectId !== null} onOpenChange={(open) => { if (!open) setDeleteProjectId(null); }}>
-        <DialogContent className="glass-panel border border-white/10 bg-zinc-950/95 text-white max-w-sm rounded-2xl p-6">
-          <DialogHeader className="mb-4">
-            <DialogTitle className="text-xl font-bold text-white flex items-center gap-2 text-red-400">
-              <Trash2 className="w-5 h-5" /> Delete Project
-            </DialogTitle>
-            <DialogDescription className="text-zinc-400">
-              Are you sure you want to delete this project? This will permanently remove all models, team members, and associated data. This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="flex flex-col sm:flex-row gap-2">
-            <Button type="button" variant="ghost" onClick={() => setDeleteProjectId(null)}
-              className="w-full sm:w-auto rounded-xl border border-white/5 text-zinc-400 hover:text-white hover:bg-white/5">Cancel</Button>
-            <Button onClick={() => deleteProjectId && handleDelete(deleteProjectId)} disabled={deleteIsPending}
-              className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl">
-              {deleteIsPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Deleting...</> : "Delete Project"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Delete ConfirmDialog */}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="Delete Project"
+        description={`This permanently removes "${deleteTarget?.name ?? ""}" and all its models, documents, and team members. This action cannot be undone.`}
+        confirmLabel="Delete Project"
+        onConfirm={handleDeleteConfirm}
+        destructive
+        loading={deletePending}
+      />
     </div>
+  );
+}
+
+/* ── Grid Card ── */
+
+interface ProjectCardActions {
+  project: ProjectWithDetails;
+  onEdit: () => void;
+  onDelete: () => void;
+  onDuplicate: () => void;
+  onShare: () => void;
+}
+
+function ProjectGridCard({
+  project,
+  onEdit,
+  onDelete,
+  onDuplicate,
+  onShare,
+}: ProjectCardActions) {
+  const router = useRouter();
+
+  return (
+    <Card className="group relative flex flex-col overflow-hidden border border-border/60 transition-all duration-200 hover:border-primary/30 hover:shadow-sm hover:shadow-primary/5">
+      <Link
+        href={`/dashboard/projects/${project.id}`}
+        className="flex flex-1 flex-col"
+      >
+        <CardContent className="flex flex-1 flex-col gap-3 p-5">
+          {/* Top row: icon + date */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
+              <FolderGit2 className="size-5 text-primary" />
+            </div>
+            <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+              <Calendar className="size-3" />
+              {new Date(project.createdAt).toLocaleDateString()}
+            </span>
+          </div>
+
+          {/* Name */}
+          <h3 className="line-clamp-1 text-lg font-semibold leading-tight text-foreground transition-colors group-hover:text-primary">
+            {project.name}
+          </h3>
+
+          {/* Description */}
+          {project.description ? (
+            <p className="line-clamp-2 flex-1 text-sm text-muted-foreground">
+              {project.description}
+            </p>
+          ) : (
+            <p className="flex-1 text-sm italic text-muted-foreground/50">
+              No description
+            </p>
+          )}
+
+          {/* Stats row */}
+          <div className="mt-auto flex items-center gap-4 border-t border-border/40 pt-3">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <CuboidIcon className="size-3.5" />
+              <span>
+                {project.modelCount}{" "}
+                {project.modelCount === 1 ? "model" : "models"}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Users className="size-3.5" />
+              <span>
+                {project.memberCount}{" "}
+                {project.memberCount === 1 ? "member" : "members"}
+              </span>
+            </div>
+          </div>
+
+          {/* Owner */}
+          <div className="text-xs text-muted-foreground">
+            Owned by{" "}
+            <span className="font-medium text-foreground">
+              {project.ownerName}
+            </span>
+          </div>
+        </CardContent>
+      </Link>
+
+      {/* ⋯ Menu */}
+      <div className="absolute right-2 top-2 z-10">
+        <DropdownMenu>
+          <Tooltip>
+            <DropdownMenuTrigger
+              render={
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="size-7 p-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                      aria-label="Project actions"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <MoreHorizontal className="size-4" />
+                    </Button>
+                  }
+                />
+              }
+            />
+            <TooltipContent>Actions</TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                router.push(`/dashboard/projects/${project.id}`);
+              }}
+            >
+              <ExternalLink className="size-4" />
+              Open
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
+            >
+              <Pencil className="size-4" />
+              Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onDuplicate();
+              }}
+            >
+              <Copy className="size-4" />
+              Duplicate
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onShare();
+              }}
+            >
+              <Share2 className="size-4" />
+              Share
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+            >
+              <Trash2 className="size-4" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </Card>
+  );
+}
+
+/* ── Table Row ── */
+
+function TableRow({
+  project,
+  onEdit,
+  onDelete,
+  onDuplicate,
+  onShare,
+}: ProjectCardActions) {
+  const router = useRouter();
+
+  return (
+    <motion.tr
+      layout
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="group border-b border-input transition-colors hover:bg-muted/30"
+    >
+      <td className="px-4 py-3">
+        <Link
+          href={`/dashboard/projects/${project.id}`}
+          className="flex items-center gap-2 font-medium text-foreground transition-colors hover:text-primary"
+        >
+          <FolderGit2 className="size-4 shrink-0 text-primary" />
+          <span className="max-w-[200px] truncate">{project.name}</span>
+        </Link>
+        {project.description && (
+          <p className="mt-0.5 max-w-[300px] line-clamp-1 text-xs text-muted-foreground">
+            {project.description}
+          </p>
+        )}
+      </td>
+      <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
+        {project.modelCount}
+      </td>
+      <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">
+        {project.memberCount}
+      </td>
+      <td className="hidden px-4 py-3 text-muted-foreground lg:table-cell">
+        {project.ownerName}
+      </td>
+      <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
+        {new Date(project.createdAt).toLocaleDateString()}
+      </td>
+      <td className="px-4 py-3 text-right">
+        <DropdownMenu>
+          <Tooltip>
+            <DropdownMenuTrigger
+              render={
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="size-7 p-0"
+                      aria-label="Project actions"
+                    >
+                      <MoreHorizontal className="size-4" />
+                    </Button>
+                  }
+                />
+              }
+            />
+            <TooltipContent>Actions</TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={() =>
+                router.push(`/dashboard/projects/${project.id}`)
+              }
+            >
+              <ExternalLink className="size-4" />
+              Open
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onEdit}>
+              <Pencil className="size-4" />
+              Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onDuplicate}>
+              <Copy className="size-4" />
+              Duplicate
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onShare}>
+              <Share2 className="size-4" />
+              Share
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onClick={onDelete}>
+              <Trash2 className="size-4" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </td>
+    </motion.tr>
   );
 }
