@@ -47,3 +47,8 @@ drizzle-push.log
 
 # local uploads
 public/uploads/*
+
+# playwright + test artifacts
+playwright-report/
+test-results/
+.deepharness/
