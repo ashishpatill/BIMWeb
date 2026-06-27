@@ -1,7 +1,7 @@
-import { SearchClient } from "./search-client";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 export default function SearchPage() {
-  return <SearchClient />;
+  redirect("/dashboard/research");
 }
