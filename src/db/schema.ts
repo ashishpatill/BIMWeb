@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, timestamp, integer, jsonb, boolean } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 export const users = pgTable('users', {
@@ -6,6 +6,9 @@ export const users = pgTable('users', {
   kindeId: text('kinde_id').notNull().unique(),
   email: text('email').notNull().unique(),
   name: text('name'),
+  firstName: text('first_name'),
+  lastName: text('last_name'),
+  onboardingState: jsonb('onboarding_state').$type<Record<string, unknown>>().default({}),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -96,5 +99,54 @@ export const auditLogs = pgTable("audit_logs", {
   metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const apiKeys = pgTable('api_keys', {
+  id: serial('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.kindeId, { onDelete: 'cascade' }),
+  label: text('label').notNull(),
+  keyHash: text('key_hash').notNull(),
+  prefix: text('prefix').notNull(),
+  scopes: text('scopes').array().default(['projects:read']).$type<string[]>(),
+  rateLimitPerMin: integer('rate_limit_per_min').default(60),
+  lastUsedAt: timestamp('last_used_at'),
+  revokedAt: timestamp('revoked_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const searchHistory = pgTable('search_history', {
+  id: serial('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.kindeId, { onDelete: 'cascade' }),
+  query: text('query').notNull(),
+  mode: text('mode').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const documents = pgTable('documents', {
+  id: serial('id').primaryKey(),
+  workspaceId: integer('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  projectId: integer('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  fileUrl: text('file_url').notNull(),
+  mimeType: text('mime_type'),
+  status: text('status').default('pending').notNull(),
+  chunks: integer('chunks').default(0),
+  indexedAt: timestamp('indexed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const notificationPreferences = pgTable('notification_preferences', {
+  id: serial('id').primaryKey(),
+  userId: text('user_id').notNull().unique().references(() => users.kindeId, { onDelete: 'cascade' }),
+  inviteEmails: boolean('invite_emails').default(true),
+  sharedEmails: boolean('shared_emails').default(true),
+  projectEmails: boolean('project_emails').default(true),
+});
+
+export const apiKeysRelations = relations(apiKeys, ({ one }) => ({
+  user: one(users, {
+    fields: [apiKeys.userId],
+    references: [users.kindeId],
+  }),
+}));
 
 

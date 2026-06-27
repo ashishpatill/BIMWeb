@@ -15,6 +15,13 @@
       "when": 1782138014788,
       "tag": "0001_faulty_moonstone",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782584087741,
+      "tag": "0002_narrow_lady_ursula",
+      "breakpoints": true
     }
   ]
 }
