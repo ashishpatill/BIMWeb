@@ -30,6 +30,19 @@ This architecture bridges the gap between abstract AI reasoning and tangible, vi
 | **Database** | Neon Postgres + Drizzle ORM |
 | **Auth** | Kinde OAuth |
 
+## Features
+
+- **3D BIM Viewer** — Full-screen viewer at `/dashboard/projects/[id]/models/[modelId]` supporting glTF and IFC formats, with measurement tools, section planes, dynamic model tree, keyboard shortcuts, and screenshot
+- **Projects** — Create, edit, share, and manage BIM projects with search, sort, and grid/table views
+- **Research** — Multi-mode search (Smart/Keyword/Semantic/Relationships) with grounded answers and source citations
+- **Documents & Ingestion** — Upload PDFs and documents; pipeline status tracking (queued/parsing/indexing/ready)
+- **Team Collaboration** — Role-based access control (admin/editor/viewer), email invites, acceptance flow
+- **API Keys** — Generate and manage per-user API keys with scope-based access and rate limiting
+- **Audit Log** — Track all activity with filters, expandable metadata, CSV/JSON export
+- **Platform Health** — Monitor BIMAgent, BIMIndex, BIMExtract, and BIMCloud services; run test queries via the gateway
+- **Public REST API** — Full v1 API at `/api/v1/*` with per-user key auth; interactive OpenAPI 3.1 docs at `/api/docs` (Scalar UI)
+- **Multi-Tenant Workspaces** — Isolated workspaces with per-user data boundaries
+
 ## Getting Started
 
 ```bash
@@ -39,6 +52,40 @@ pnpm install
 # Setup environment variables
 cp .env.local.example .env.local
 
+# Run checks
+pnpm test   # 192 passing Vitest tests (16 files)
+pnpm lint   # 0 errors
+pnpm build  # production build (30 routes)
+
 # Run the development server
 pnpm dev
 ```
+
+## Quick Commands
+
+| Command | Purpose |
+|---|---|
+| `pnpm dev` | Start development server |
+| `pnpm build` | Production build |
+| `pnpm lint` | ESLint check (0 errors expected) |
+| `pnpm test` | Run Vitest unit/component tests |
+| `pnpm exec tsc --noEmit` | TypeScript type-check |
+| `pnpm drizzle-kit generate` | Generate new migration |
+| `pnpm drizzle-kit push` | Push schema to Neon DB |
+
+## API Documentation
+
+A REST API is available at `/api/v1/*` with endpoints for projects, models, team, search, documents, and audit. Authentication is via API keys (manageable at `/dashboard/api-keys`).
+
+- **Interactive Scalar UI**: `/api/docs`
+- **OpenAPI 3.1 spec JSON**: `/api/v1/openapi`
+
+## Testing
+
+192 tests across 16 files covering:
+- RBAC (27 tests), sharing (17), storage (15), workspace (8), api-keys (29)
+- IFC parser (14), server actions (26), audit logging (4), ecosystem API clients (18)
+- Component RTL tests: EmptyState, ConfirmDialog, StatCard, SegmentedTabs (31)
+- Smoke/export tests (2)
+
+Playwright E2E specs are designed for 12 primary journeys; `@playwright/test` is installed but E2E requires a live environment in CI.

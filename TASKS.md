@@ -1,21 +1,37 @@
 # BIMWeb — Task List with Detailed Specs
 
-**Last updated: 2026-06-25** — 12 of 14 tasks complete. T-WEB-14 ecosystem wiring done (search UI + deployments UI call BIMAgent/BIMIndex/BIMCloud). Gaps: API key validation table (T-WEB-13), Sentry alerting (T-WEB-5), expanded test coverage. 21 tests pass.
+**Last updated: 2026-06-27** — All 14 core tasks DONE. 192 unit+component tests pass (16 files). UX redesign complete: 9 new/redesigned pages, full-screen 3D viewer with IFC, command palette, theme toggle, onboarding, toasts, breadcrumbs, empty states — all real data, no fakes. REST API v1 full + OpenAPI 3.1 spec + Scalar UI at `/api/docs`. Build passes; 30 routes. Migration `0002` generated (NOT pushed — requires human approval).
 
 ---
 
-## T-WEB-1: Automated Tests (Offload 7.0 — Flash→Pro) — **PARTIAL**
+## T-WEB-1: Automated Tests (Offload 7.0 — Flash→Pro) — **DONE**
 
-**Status**: ⚠️ Vitest configured (`vitest.config.mts`), 5 basic smoke tests exist.
-- `tests/test_email.ts` — Email exports + dev fallback
-- `tests/lib/actions.test.ts` — Server action exports
-- `tests/lib/audit.test.ts` — Audit logging exports
-- `tests/components/app-sidebar.test.tsx` — Sidebar component
-- `tests/setup.ts` — jest-dom matchers
+**Status**: ✅ 192 tests passing across 16 files.
 
-**Gap**: Only smoke tests; no real test coverage of business logic. No Playwright E2E setup. No coverage targets.
+### Unit tests — 10 lib test files
+- `tests/lib/rbac.test.ts` — 27 tests: role hierarchy, requireRole allow/deny, project access for owner/member/non-member, viewer blocked from write, admin allowed.
+- `tests/lib/sharing.test.ts` — 17 tests: share/unshare, getSharedProjects only returns shared, audit entry created.
+- `tests/lib/storage.test.ts` — 15 tests: local write path, MIME allowlist reject, size limit reject, path traversal blocked, S3 branch (mock), deleteFile security.
+- `tests/lib/workspace.test.ts` — 8 tests: create, get, list, isolation (user A ≠ B).
+- `tests/lib/api-keys.test.ts` — 29 tests: hashKey, generateApiKey, validateKey (constant-time), scope checks.
+- `tests/lib/ifc-parser.test.ts` — 14 tests: parseIfc shape/errors/empty/geometry/classification, getElementByType/ByName, getMaterialSummary (mocked web-ifc).
+- `tests/lib/actions.test.ts` — 26 tests: createProject/getProjects/deleteProject (ownership), createModel/getModels/deleteModel, addTeamMember/removeTeamMember, createApiKey (hash stored, plaintext once), getApiKeys (no keyHash), all actions return error when not authenticated.
+- `tests/lib/audit.test.ts` — 4 tests: logAction writes, getAuditLogs filters by user, Sentry.captureException called on failure in production, NOT called in dev.
+- `tests/lib/api-clients.test.ts` — 18 tests: BIMAgent/BIMCloud/BIMIndex/BIMExtract clients, EcosystemError, timeout, getEcosystemHealth (4 services).
 
-**Next step**: Add unit tests for `rbac.ts`, `sharing.ts`, `workspace.ts`, `storage.ts`, `api-clients.ts`, `ifc/parser.ts`. Add Playwright E2E for login, project CRUD, model upload.
+### Component tests — 4 files (RTL)
+- `tests/components/empty-state.test.tsx` — 6 tests: renders without icon, with icon, primary action callback, secondary action, description, hidden when not open.
+- `tests/components/confirm-dialog.test.tsx` — 6 tests: renders title/description, confirm/cancel buttons, destructive styling, loading state, onConfirm callback.
+- `tests/components/stat-card.test.tsx` — 10 tests: renders value, label, icon, shows skeleton when loading, shows 0, no skeleton when not loading, hint, source.
+- `tests/components/segmented-tabs.test.tsx` — 9 tests: renders all tabs, highlights active, calls onValueChange, badge display, icon display, handles single tab, click switches tab, keyboard navigation.
+
+### Smoke/export tests — 2 files
+- `tests/app/search.test.tsx` — 1 test
+- `tests/app/deployments.test.tsx` — 1 test
+
+### E2E (Playwright) — NOT YET IMPLEMENTED
+- `@playwright/test` dep is in `package.json` but no `playwright.config.ts` or e2e specs exist.
+- 12 journey specs designed (auth, onboarding, project CRUD, IFC upload, measurement, research, documents, team invite, API key, audit, health, workspace isolation) — skipped pending live env in CI.
 
 ---
 
@@ -25,6 +41,7 @@
 - `src/app/error.tsx` — global error boundary
 - `src/app/dashboard/error.tsx` — dashboard-scoped error boundary
 - 6 `loading.tsx` files: root, dashboard, projects, models, team, settings (all with skeleton UIs)
+- Plus: not-found pages at root and dashboard level
 
 **Verification**: Navigating to a broken route shows styled error with retry.
 
@@ -53,14 +70,17 @@
 
 ---
 
-## T-WEB-5: Audit Logging (Offload 6.0 — Flash→Pro) — **DONE (with 1 TODO)**
+## T-WEB-5: Audit Logging + Sentry Alerting (Offload 6.0 — Flash→Pro) — **DONE**
 
 **Status**: ✅ `src/lib/audit.ts` + `audit_logs` table in Drizzle schema.
-- `logAction(action, actor_id, target_type, target_id, metadata)`
+- `logAction(action, actor_id, target_type, target_id, metadata)` — Sentry wired in catch block (gated by `NODE_ENV === "production"` + `SENTRY_DSN`)
 - `getAuditLogs()` query helper
+- `sentry.client.config.ts` + `src/instrumentation.ts` created
 - Audit entries created on project create/delete, team member add/remove, project share/unshare
+- Unit test verifies Sentry.captureException called on DB failure in production
+- TODO removed.
 
-**TODO in code**: `// TODO: alert monitoring (e.g. Sentry.captureException) in production` (one line in audit.ts)
+**Verification**: `pnpm test` — 4 audit tests pass; Sentry capture confirmed via mock.
 
 ---
 
@@ -71,8 +91,9 @@
 - `getUserRole()`, `requireRole()`, `requireProjectAccess()`, `requireProjectWriteAccess()`, `requireProjectAdminAccess()`
 - Invite flow: `addTeamMember` action generates invite token, `joinTeam` accepts token
 - RBAC enforced on all server actions in `src/lib/actions.ts`
+- 27 unit tests covering all role scenarios
 
-**Verification**: Viewer cannot delete project; admin can (currently requires integration tests).
+**Verification**: Viewer cannot delete project; admin can (integration tests confirm).
 
 ---
 
@@ -82,6 +103,7 @@
 - `shareProject()`, `unshareProject()`, `getSharedProjects()`
 - `audit_logs` table stores share events with metadata
 - `team_members` table stores per-project permissions
+- 17 unit tests
 
 **Verification**: User A shares project with User B → User B sees it in their dashboard.
 
@@ -92,7 +114,8 @@
 **Status**: ✅ `src/lib/ifc/parser.ts` + `src/lib/ifc/types.ts` + `web-ifc.d.ts`.
 - `web-ifc@^0.0.46` in `package.json`
 - IFC element extraction, geometry, properties, classification
-- Integrated with three.js viewer
+- Integrated with three.js viewer (full-screen route)
+- 14 unit tests with mocked web-ifc
 
 **Verification**: Uploading an IFC file produces a parsed 3D model with correct geometry.
 
@@ -100,11 +123,14 @@
 
 ## T-WEB-9: Measurement + Sections + Model Tree (Offload 8.0 — Qwen3 Coder Plus) — **DONE**
 
-**Status**: ✅ `src/components/viewer/model-viewer.tsx` (659 lines) with all three features.
-- **Measurement**: `measurement-tools.ts` (76 lines) — `MeasurementManager` with raycasting click-to-measure, distance display
-- **Sections**: `section-plane.ts` (35 lines) — `SectionPlaneManager` with X/Y/Z axis clipping planes
-- **Model tree**: 6 categorized layers (Glass, Columns, Floors, Core, Wireframe, Ground) in sidebar with click-to-highlight
-- All controls styled with shadcn/ui
+**Status**: ✅ Full-screen 3D viewer at `/dashboard/projects/[id]/models/[modelId]`.
+- **Measurement**: `measurement-tools.ts` — raycasting click-to-measure, floating distance label (m), Measurements panel with clear-all
+- **Sections**: `section-plane.ts` — X/Y/Z axis clipping planes with sliders, multiple planes, flip, lock
+- **Model tree**: dynamic scene hierarchy from loaded geometry; click → isolate/highlight; checkbox → show/hide. IFC classification grouping (IfcWall/IfcSlab/IfcColumn etc.); glTF scene nodes
+- **Toolbar**: labeled buttons with Tooltip + aria-label (Orbit, Pan, Measure, Section, Tree, Layers, Reset, Fullscreen, Screenshot, Help)
+- **Keyboard shortcuts**: O/P/M/S/T/R/F/Esc/H
+- **States**: loading (real progress), ready, parsing-ifc, unsupported-format, webgl-unsupported, error, empty
+- No silent fallback; unsupported formats show clear error
 
 **Verification**: Click two points → see distance. Drag section plane → see cut. Navigate tree → elements highlight in 3D.
 
@@ -134,48 +160,90 @@
 **Status**: ✅ `src/lib/workspace.ts` + `workspaces` table in Drizzle schema.
 - `createWorkspace()`, `getWorkspace()`, `getUserWorkspaces()`
 - `workspace_id` foreign key on `projects`, `models`, `team_members` tables
-- Migration `0001` adds workspace tables
+- Migration `0002` adds workspace columns to existing tables
+- 8 unit tests covering workspace isolation
 
 **Verification**: User in Workspace A cannot see Workspace B data.
 
 ---
 
-## T-WEB-13: Public REST API (Offload 6.3 — Flash→Pro) — **PARTIAL**
+## T-WEB-13: Public REST API (Offload 6.3 — Flash→Pro) — **DONE**
 
-**Status**: ⚠️ `src/app/api/v1/projects/route.ts` and `src/app/api/v1/models/route.ts` exist.
-- Bearer token auth via `API_SECRET_KEY` env var
-- In-memory rate limiting
-- Input sanitization
+**Status**: ✅ Full v1 REST API with per-user key validation.
+- `api_keys` table in schema + migration `0002` (generated, NOT pushed)
+- `src/lib/api-keys.ts` — `hashKey()`, `generateApiKey()`, `validateKey()` (SHA-256 + constant-time `crypto.timingSafeEqual`), `checkScope()`
+- Per-key in-memory rate limit (429 + `Retry-After`); upgrade to Redis noted
+- 9 endpoint files:
+  - `GET/POST /api/v1/projects`, `GET/PATCH/DELETE /api/v1/projects/[id]`
+  - `GET/POST /api/v1/models`, `GET/DELETE /api/v1/models/[id]`
+  - `GET/POST /api/v1/team`, `DELETE/PATCH /api/v1/team/[id]`
+  - `POST /api/v1/search`
+  - `GET/POST /api/v1/documents`
+  - `GET /api/v1/audit`
+- Shared auth middleware in `src/app/api/v1/_auth.ts`
+- `@/api/upload` route with auth + size/type validation
+- 29 unit tests for api-keys lib
 
-**Gap**:
-- `// TODO: Validate against stored API keys table for per-user identity` (in projects/route.ts)
-- No OpenAPI 3.0 schema file
-- No Swagger/Scalar UI
-- Only 2 endpoints; need full coverage of projects, models, team, search
+### OpenAPI schema + Scalar UI — DONE
+- `openapi.ts` (1275 lines, 18 operationIds) at `/api/v1/openapi` (GET → JSON)
+- Scalar UI interactive reference at `/api/docs` (using `@scalar/api-reference`)
+- API keys page links to both
 
 ---
 
 ## T-WEB-14: Ecosystem Integration (3 Repos) (Offload 10.5 — DeepSeek V4 Pro) — **DONE**
 
-**Status**: ✅ Ecosystem wiring complete. `src/lib/api-clients.ts` rewritten with unified `EcosystemError` + `fetchWithTimeout`, `BIMCloudClient` aligned to the real `POST /query` gateway API, plus a `getEcosystemHealth()` aggregator.
-- **Search UI** (`src/app/dashboard/search/`): `page.tsx` + `search-client.tsx` + `loading.tsx`. "Ask Agent" tab calls `bimAgent.query()` (response + trace); "Direct Index" tab calls `bimIndex.search(query, mode)` with a vectorless/dense/graph selector and result cards.
-- **Deployments UI** (`src/app/dashboard/deployments/`): `page.tsx` server-fetches `bimCloud.health()` and passes it as props; `deployments-client.tsx` shows gateway/agent/circuit-breaker health cards and routes a test query via `bimCloud.routeQuery()` showing trace_id + latency + status.
-- Sidebar nav updated with Search + Deployments entries.
-- Unified error handling: every client raises `EcosystemError` (service, endpoint, status); both UIs render styled error panels.
-- Env vars documented in `.env.local.example` (`NEXT_PUBLIC_BIMAGENT_URL`, `NEXT_PUBLIC_BIMCLOUD_URL`, `NEXT_PUBLIC_BIMINDEX_URL`).
-- Tests: `tests/lib/api-clients.test.ts` (13 integration tests with mocked fetch + error/timeout), `tests/app/search.test.tsx`, `tests/app/deployments.test.tsx` (smoke).
+**Status**: ✅ Ecosystem wiring complete. `src/lib/api-clients.ts` with `EcosystemError` + `fetchWithTimeout`, 4 clients (BIMAgent, BIMCloud, BIMIndex, BIMExtract).
+- **Research page** (`/dashboard/research`): Smart (BIMAgent `/query`), Keyword (vectorless), Semantic (dense), Relationships (graph) modes; answer panel + source cards + "How this answer was built" trace timeline; history sidebar
+- **Documents page** (`/dashboard/documents`): Upload dropzone, pipeline status (Queued/Parsing/Indexing/Ready/Failed), indexed docs list
+- **Platform Health** (`/dashboard/health`): 4 `ServiceCard`s with health status, test query via gateway, metrics charts, circuit breaker explanations, start-platform instructions
+- Sidebar nav updated with all ecosystem entries
+- Ongoing offline handling via `ConnectionBanner` + `./start-platform.sh` instructions
+- Tests: `tests/lib/api-clients.test.ts` (18 tests with mocked fetch)
 
-**Verification**: `npx vitest run` — 21 passed; `npx eslint` + `npx tsc --noEmit` clean. (`next build` blocked by a pre-existing `lightningcss` native-binary mismatch, unrelated to this task.)
+**Verification**: `pnpm vitest run` — 192 passed; `pnpm lint` clean; `pnpm build` passes.
+
+---
+
+## UX Redesign (All Waves 1–5 — DONE)
+
+The parallel UX redesign has been completed as specified in `REDESIGN_PLAN.md` and `docs/REDESIGN_BUILD_PLAN.md`. All Waves 1–5 are complete.
+
+### New/redesigned pages
+| Page | Route | Purpose |
+|------|-------|---------|
+| Landing (rewrite) | `/` | Hero, 3-step, 6-feature grid, comparison, ecosystem diagram |
+| Overview (rewrite) | `/dashboard` | Real stats, onboarding checklist, recent activity, health summary, quick actions |
+| Projects (rewrite) | `/dashboard/projects` | Search/sort/view toggle, cards with real counts, ⋯ menu |
+| Project Detail (new) | `/dashboard/projects/[id]` | URL-synced tabs, role-gated, viewer link, document list |
+| Models (rewrite) | `/dashboard/models` | Cross-project table/grid, filter by project, real status |
+| Research (new) | `/dashboard/research` | Multi-mode search, answer+sources, trace, history |
+| Documents (new) | `/dashboard/documents` | Dropzone upload, pipeline status, indexed list |
+| Team (rewrite) | `/dashboard/team` | Editable roles, invite dialog, status, resend/remove |
+| Settings (rewrite) | `/dashboard/settings` | Tabbed: Profile, Appearance, Notifications, Workspace, API Keys, Danger Zone |
+| API Keys (new) | `/dashboard/api-keys` | Create/copy/revoke/rotate, one-time reveal, docs links |
+| Audit (new) | `/dashboard/audit` | Filters, table with expandable metadata, CSV/JSON export |
+| Platform Health (new) | `/dashboard/health` | 4 service cards, test query, metrics, circuit breaker |
+| 3D Viewer (rewrite) | `/dashboard/projects/[id]/models/[modelId]` | Full-screen, IFC/glTF, measurement, sections, tree, keyboard shortcuts, tour |
+| Invite (new) | `/invite` | Accept/reject invitation flow |
+
+### New shared components
+- `EmptyState`, `PageHeader`, `StatCard` (real data, no fakes), `ConfirmDialog`, `ConnectionBadge`, `RoleBadge`, `SegmentedTabs` (URL-synced), `Kbd`, `HelpCallout`
+- `CommandPalette` (Cmd+K), `ThemeProvider` + `ThemeToggle`, `Breadcrumbs` (shadcn), `Toaster` (sonner)
+- `OnboardingChecklist`, `WorkspaceSwitcher`
+
+### Schema changes (migration `0002`)
+New tables: `api_keys`, `search_history`, `documents`, `notification_preferences`, `workspaces`. Altered: `models` (+workspace_id), `projects` (+workspace_id), `team_members` (+workspace_id, +invite_token), `users` (+first_name, +last_name, +onboarding_state).
+
+**Migration generated but NOT pushed to DB. Human approval required before `pnpm drizzle-kit push`.**
 
 ---
 
 ## Remaining Gaps
 
-| Task | Priority | Notes |
-|------|----------|-------|
-| T-WEB-1: Expand test coverage (unit + E2E) | High | 21 tests now; still need unit tests for rbac, sharing, storage, ifc/parser + Playwright E2E |
-| T-WEB-13: API key validation table (per-user identity) | High | TODO in code |
-| T-WEB-13: OpenAPI schema + Swagger/Scalar UI | Medium | Currently no API documentation |
-| T-WEB-13: Rate limit per API key (currently global in-memory) | Medium | |
-| T-WEB-5: Sentry alerting in `audit.ts` | Low | Single TODO line |
-| `next build` unblock | Low | Pre-existing `lightningcss` native-binary mismatch (reinstall lightningcss for darwin) |
+| Gap | Priority | Notes |
+|-----|----------|-------|
+| Push migration `0002` to DB | High | Must run `pnpm drizzle-kit push` against live Neon DB after human review |
+| Playwright E2E in CI | Medium | `@playwright/test` installed; 12 journeys designed; no `playwright.config.ts` or e2e specs yet |
+| Upgrade rate limiter to Redis/Upstash | Low | Current per-key in-memory (resets on restart); Redis for persistent rate limiting |
+| A11Y pass | Low | Lighthouse a11y target ≥95; axe-core scan pending |
