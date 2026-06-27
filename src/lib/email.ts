@@ -61,7 +61,17 @@ export async function sendWelcomeEmail(email: string, name: string): Promise<{ s
   })
 }
 
-export async function sendInviteEmail(email: string, invitedBy: string, projectName: string, inviteLink: string): Promise<{ success: boolean; error?: string }> {
+export async function sendInviteEmail(
+  email: string,
+  invitedBy: string,
+  projectName: string,
+  inviteLink: string,
+  role?: string
+): Promise<{ success: boolean; error?: string }> {
+  const roleDescription = role
+    ? { admin: "full control", editor: "upload and edit models", viewer: "read-only access" }[role] || role
+    : "";
+
   return sendEmail({
     to: email,
     subject: `${invitedBy} invited you to ${projectName}`,
@@ -72,6 +82,7 @@ export async function sendInviteEmail(email: string, invitedBy: string, projectN
           <strong>${invitedBy}</strong> has invited you to collaborate on the project
           <strong>${projectName}</strong> in BIMRAG.
         </p>
+        ${roleDescription ? `<p style="color: #a1a1aa; margin-top: 8px;">You've been invited as <strong>${role}</strong> — ${roleDescription}.</p>` : ""}
         <a href="${inviteLink}"
            style="display: inline-block; padding: 12px 24px; background: #18181b; color: #f4f4f5; text-decoration: none; border-radius: 8px; margin-top: 16px;">
           Accept Invitation

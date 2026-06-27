@@ -1,6 +1,6 @@
 /** Multi-tenant workspace isolation. */
 import { db } from "@/db"
-import { workspaces, projects, models, teamMembers } from "@/db/schema"
+import { workspaces } from "@/db/schema"
 import { eq } from "drizzle-orm"
 
 export async function createWorkspace(name: string, ownerId: string) {
