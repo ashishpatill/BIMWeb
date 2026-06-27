@@ -1,54 +1,123 @@
-import { NextRequest, NextResponse } from "next/server"
-import { db } from "@/db"
-import { models } from "@/db/schema"
-import { eq } from "drizzle-orm"
+/**
+ * Public REST API v1 — Models endpoint.
+ *
+ * GET  /api/v1/models             → list models (optionally filtered by projectId)
+ * POST /api/v1/models             → create a new model
+ *
+ * @security Auth via shared _auth.ts.
+ */
 
-const MAX_LIMIT = 100
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/db";
+import { models, projects } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { requireAuth, respondBadRequest } from "@/app/api/v1/_auth";
+import { logAction } from "@/lib/audit";
 
-// In-memory rate limiter: map<key, { count, resetAt }>
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
-const RATE_LIMIT_MAX = 60
-const RATE_LIMIT_WINDOW_MS = 60_000
+const MAX_LIMIT = 100;
+const MAX_NAME_LENGTH = 256;
 
-function checkRateLimit(key: string): boolean {
-  const now = Date.now()
-  const entry = rateLimitMap.get(key)
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
-    return true
-  }
-  entry.count++
-  return entry.count <= RATE_LIMIT_MAX
-}
-
-async function validateApiKey(request: NextRequest): Promise<string | null> {
-  const authHeader = request.headers.get("authorization")
-  if (!authHeader?.startsWith("Bearer ")) return null
-  const apiKey = authHeader.slice(7)
-  if (apiKey !== process.env.API_SECRET_KEY) return null
-  if (!checkRateLimit(apiKey)) return null
-  return "api-user"
+function sanitize(str: string, maxLen: number): string {
+  return str.replace(/[<>&'"]/g, "").slice(0, maxLen);
 }
 
 export async function GET(request: NextRequest) {
-  const userId = await validateApiKey(request)
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const result = await requireAuth(request, "models:read");
+  if ("error" in result) return result.error;
+  const { userId } = result.auth;
+
+  const { searchParams } = new URL(request.url);
+  const projectId = searchParams.get("projectId");
+  const limit = Math.max(1, Math.min(Number(searchParams.get("limit")) || 20, MAX_LIMIT));
+  const offset = Math.max(0, Number(searchParams.get("offset")) || 0);
+
+  // Only return models belonging to projects owned by the API key user
+  const query = db
+    .select({
+      id: models.id,
+      name: models.name,
+      description: models.description,
+      projectId: models.projectId,
+      fileSize: models.fileSize,
+      fileUrl: models.fileUrl,
+      status: models.status,
+      createdAt: models.createdAt,
+    })
+    .from(models)
+    .innerJoin(projects, eq(models.projectId, projects.id))
+    .where(
+      projectId
+        ? eq(models.projectId, Number(projectId))
+        : eq(projects.ownerId, userId),
+    )
+    .limit(limit)
+    .offset(offset);
+
+  const result2 = await query;
+  return NextResponse.json({
+    data: result2,
+    pagination: { limit, offset },
+  });
+}
+
+export async function POST(request: NextRequest) {
+  const result = await requireAuth(request, "models:write");
+  if ("error" in result) return result.error;
+  const { userId } = result.auth;
+
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return respondBadRequest("Invalid JSON body");
   }
 
-  const authHeader = request.headers.get("authorization")
-  if (authHeader?.startsWith("Bearer ") && !checkRateLimit(authHeader.slice(7))) {
-    return NextResponse.json({ error: "Too Many Requests" }, { status: 429 })
+  if (!body.name || typeof body.name !== "string" || body.name.trim().length === 0) {
+    return respondBadRequest("name is required (non-empty string)");
   }
 
-  const { searchParams } = new URL(request.url)
-  const projectId = searchParams.get("projectId")
-  const limit = Math.max(1, Math.min(Number(searchParams.get("limit")) || 20, MAX_LIMIT))
-  const offset = Math.max(0, Number(searchParams.get("offset")) || 0)
+  if (!body.projectId || typeof body.projectId !== "number") {
+    return respondBadRequest("projectId is required (number)");
+  }
 
-  const query = db.select().from(models)
-  if (projectId) query.where(eq(models.projectId, Number(projectId)))
+  // Verify the project exists and belongs to the user
+  const projectRows = await db
+    .select({ id: projects.id, ownerId: projects.ownerId })
+    .from(projects)
+    .where(eq(projects.id, Number(body.projectId)))
+    .limit(1);
 
-  const result = await query.limit(limit).offset(offset)
-  return NextResponse.json({ data: result, pagination: { limit, offset } })
+  if (projectRows.length === 0) {
+    return NextResponse.json({ error: "Project not found" }, { status: 404 });
+  }
+
+  if (projectRows[0].ownerId !== userId) {
+    return NextResponse.json({ error: "Project not found" }, { status: 404 });
+  }
+
+  const [model] = await db
+    .insert(models)
+    .values({
+      name: sanitize(body.name.trim(), MAX_NAME_LENGTH),
+      description:
+        body.description && typeof body.description === "string"
+          ? sanitize(body.description, 2048)
+          : null,
+      projectId: Number(body.projectId),
+      fileSize: String(body.fileSize ?? "0"),
+      fileUrl: body.fileUrl && typeof body.fileUrl === "string" ? body.fileUrl : null,
+      status: "processing",
+    })
+    .returning();
+
+  // Audit log
+  await logAction({
+    action: "api_create_model",
+    actorId: userId,
+    targetType: "model",
+    targetId: model.id,
+    metadata: { name: model.name, projectId: model.projectId, source: "api" },
+  });
+
+  return NextResponse.json({ data: model }, { status: 201 });
 }
