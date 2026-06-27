@@ -1,13 +1,27 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Users, Mail, Shield, Calendar, UserPlus, AlertCircle, Loader2, Trash2 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { toast } from "sonner";
+import {
+  Users,
+  Mail,
+  UserPlus,
+  Loader2,
+  MoreHorizontal,
+  RefreshCw,
+  Trash2,
+  Filter,
+  AlertCircle,
+  Calendar,
+} from "lucide-react";
+import Link from "next/link";
+import { PageHeader, EmptyState, ConfirmDialog } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Dialog,
   DialogContent,
@@ -15,7 +29,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -24,16 +37,39 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { addTeamMember, removeTeamMember } from "@/lib/actions";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  addTeamMember,
+  removeTeamMember,
+  updateTeamMemberRole,
+  resendInvite,
+} from "@/lib/actions";
+
+// ──────────────────────────────────────────────
+// Types
+// ──────────────────────────────────────────────
 
 interface TeamMember {
   id: number;
   email: string;
   role: string;
+  inviteToken: string | null;
   joinedAt: Date;
   projectId: number;
   projectName?: string;
+  userName?: string | null;
+  userFirstName?: string | null;
+  userLastName?: string | null;
 }
 
 interface Project {
@@ -46,263 +82,557 @@ interface TeamClientProps {
   projects: Project[];
 }
 
-export function TeamClient({ initialMembers, projects }: TeamClientProps) {
+// ──────────────────────────────────────────────
+// Component
+// ──────────────────────────────────────────────
+
+export function TeamClient({
+  initialMembers,
+  projects,
+}: TeamClientProps) {
   const router = useRouter();
-  const [isOpen, setIsOpen] = useState(false);
-  const [email, setEmail] = useState("");
-  const [projectId, setProjectId] = useState<string>("");
-  const [role, setRole] = useState<string>("viewer");
+
+  // ── State ──────────────────────────────────
+  const [members, setMembers] = useState<TeamMember[]>(initialMembers);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteProjectId, setInviteProjectId] = useState("");
+  const [inviteRole, setInviteRole] = useState("viewer");
   const [isPending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  const [deleteMemberId, setDeleteMemberId] = useState<number | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<TeamMember | null>(null);
   const [deleteIsPending, startDeleteTransition] = useTransition();
+  const [projectFilter, setProjectFilter] = useState<string>("all");
+  const [resendCooldown, setResendCooldown] = useState<Record<number, number>>({});
 
-  const handleRemoveMember = async () => {
-    if (deleteMemberId === null) return;
-    startDeleteTransition(async () => {
-      const res = await removeTeamMember(deleteMemberId);
-      if (res.success) {
-        setDeleteMemberId(null);
-        router.refresh();
-      }
-    });
-  };
+  // ── Derived ─────────────────────────────────
+  const filteredMembers = useMemo(() => {
+    if (projectFilter === "all") return members;
+    return members.filter((m) => m.projectId === Number(projectFilter));
+  }, [members, projectFilter]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const hasProjects = projects.length > 0;
+
+  const getInitials = useCallback((member: TeamMember): string => {
+    if (member.userFirstName && member.userLastName) {
+      return `${member.userFirstName[0]}${member.userLastName[0]}`.toUpperCase();
+    }
+    if (member.userName) {
+      return member.userName
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2);
+    }
+    return member.email.substring(0, 2).toUpperCase();
+  }, []);
+
+  const getDisplayName = useCallback((member: TeamMember): string => {
+    if (member.userFirstName) {
+      return `${member.userFirstName} ${member.userLastName || ""}`.trim();
+    }
+    if (member.userName) return member.userName;
+    return "—";
+  }, []);
+
+  const isPendingMember = useCallback(
+    (member: TeamMember): boolean => member.inviteToken !== null,
+    [],
+  );
+
+  // ── Invite Handler ─────────────────────────
+  const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !projectId) {
-      setError("Please fill in all fields.");
+    if (!inviteEmail.trim() || !inviteProjectId) {
+      setInviteError("Please fill in all fields.");
       return;
     }
 
-    setError(null);
+    setInviteError(null);
     startTransition(async () => {
-      const res = await addTeamMember(Number(projectId), email, role);
+      const res = await addTeamMember(
+        Number(inviteProjectId),
+        inviteEmail.trim(),
+        inviteRole,
+      );
+
+      if (!res.success) {
+        setInviteError(res.error || "Failed to send invitation");
+        return;
+      }
+
+      if (res.emailSent) {
+        toast.success(`Invitation sent to ${inviteEmail.trim()}`);
+      } else {
+        toast.error(
+          `Invitation saved but email delivery failed: ${res.emailError || "Unknown error"}. You can resend later.`,
+        );
+      }
+
+      setInviteOpen(false);
+      setInviteEmail("");
+      setInviteProjectId("");
+      setInviteRole("viewer");
+      router.refresh();
+    });
+  };
+
+  // ── Remove Handler ─────────────────────────
+  const handleRemoveMember = async () => {
+    if (!deleteTarget) return;
+    const memberId = deleteTarget.id;
+    startDeleteTransition(async () => {
+      const res = await removeTeamMember(memberId);
       if (res.success) {
-        setIsOpen(false);
-        setEmail("");
-        setProjectId("");
-        setRole("viewer");
+        setMembers((prev) => prev.filter((m) => m.id !== memberId));
+        setDeleteTarget(null);
+        toast.success("Team member removed");
         router.refresh();
       } else {
-        setError(res.error || "Failed to invite team member");
+        toast.error(res.error || "Failed to remove team member");
       }
     });
   };
 
-  const getInitials = (email: string) => {
-    return email.substring(0, 2).toUpperCase();
+  // ── Role Change Handler ────────────────────
+  const handleRoleChange = async (memberId: number, newRole: string) => {
+    startTransition(async () => {
+      const res = await updateTeamMemberRole(memberId, newRole);
+      if (res.success) {
+        setMembers((prev) =>
+          prev.map((m) => (m.id === memberId ? { ...m, role: newRole } : m)),
+        );
+        toast.success("Role updated");
+        router.refresh();
+      } else {
+        toast.error(res.error || "Failed to update role");
+      }
+    });
   };
 
-  return (
-    <div className="flex flex-col gap-8 pb-10">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-white mb-2">Team Collaborators</h1>
-          <p className="text-zinc-400">Invite, organize, and manage permissions for project team members.</p>
-        </div>
+  // ── Resend Handler ─────────────────────────
+  const handleResend = async (member: TeamMember) => {
+    const lastSent = resendCooldown[member.id];
+    if (lastSent && Date.now() - lastSent < 30000) {
+      toast.error("Please wait 30 seconds between resends");
+      return;
+    }
 
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogTrigger render={<Button className="w-full sm:w-auto px-6 py-5 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl flex items-center justify-center gap-2 shadow-[0_0_30px_rgba(var(--primary),0.3)] transition-all hover:scale-105 active:scale-95" />}>
-            <UserPlus className="w-5 h-5" />
-            Invite Member
-          </DialogTrigger>
-          <DialogContent className="glass-panel border border-white/10 bg-zinc-950/97 text-white max-w-md rounded-2xl p-6">
-            <DialogHeader className="mb-4">
-              <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
-                <Users className="text-primary w-6 h-6" /> Invite Team Member
-              </DialogTitle>
-              <DialogDescription className="text-zinc-400">
-                Grant access to specific projects and customize editing/viewing roles.
-              </DialogDescription>
-            </DialogHeader>
+    startTransition(async () => {
+      const res = await resendInvite(member.id);
+      if (res.success && res.emailSent) {
+        setResendCooldown((prev) => ({ ...prev, [member.id]: Date.now() }));
+        toast.success(`Invitation resent to ${member.email}`);
+      } else if (res.success && !res.emailSent) {
+        toast.error(
+          `Email delivery failed: ${res.emailError || "Unknown error"}`,
+        );
+      } else {
+        toast.error(res.error || "Failed to resend invitation");
+      }
+      router.refresh();
+    });
+  };
 
-            {projects.length === 0 ? (
-              <div className="p-4 bg-amber-500/10 border border-amber-500/20 text-amber-300 rounded-xl flex items-start gap-3 mt-2">
-                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-                <div className="text-sm">
-                  <p className="font-semibold">No Projects Available</p>
-                  <p className="mt-1 text-zinc-400">You must create at least one project before inviting team members.</p>
-                </div>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email" className="text-sm font-semibold text-zinc-300">
-                    Email Address
-                  </Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="colleague@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="pl-9 bg-white/5 border-white/10 text-white rounded-xl focus:border-primary/50"
-                      required
-                    />
-                  </div>
-                </div>
+  // ── Render ─────────────────────────────────
+  const roleOptions = [
+    { value: "admin", label: "Admin", description: "Full control" },
+    { value: "editor", label: "Editor", description: "Upload & edit" },
+    { value: "viewer", label: "Viewer", description: "Read only" },
+  ];
 
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold text-zinc-300">Assign Project Access</Label>
-                  <Select value={projectId} onValueChange={(val) => setProjectId(val || "")} required>
-                    <SelectTrigger className="bg-white/5 border-white/10 text-white rounded-xl focus:border-primary/50">
-                      <SelectValue placeholder="Select a project" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-zinc-950 border border-white/10 text-white rounded-xl">
-                      {projects.map((proj) => (
-                        <SelectItem key={proj.id} value={proj.id.toString()} className="focus:bg-primary/20 focus:text-white">
-                          {proj.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+  const inviteDialogContent = (
+    <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+      <DialogContent className="glass-panel border border-white/10 bg-zinc-950/97 text-white max-w-md rounded-2xl p-6">
+        <DialogHeader className="mb-4">
+          <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
+            <Users className="text-primary size-6" /> Invite Team Member
+          </DialogTitle>
+          <DialogDescription className="text-zinc-400">
+            Grant access to specific projects with appropriate permissions.
+          </DialogDescription>
+        </DialogHeader>
 
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold text-zinc-300">Role permissions</Label>
-                  <Select value={role} onValueChange={(val) => setRole(val || "viewer")} required>
-                    <SelectTrigger className="bg-white/5 border-white/10 text-white rounded-xl focus:border-primary/50">
-                      <SelectValue placeholder="Select a role" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-zinc-950 border border-white/10 text-white rounded-xl">
-                      <SelectItem value="admin" className="focus:bg-primary/20 focus:text-white">Admin (Full Control)</SelectItem>
-                      <SelectItem value="editor" className="focus:bg-primary/20 focus:text-white">Editor (Edit Models)</SelectItem>
-                      <SelectItem value="viewer" className="focus:bg-primary/20 focus:text-white">Viewer (Read-Only)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {error && <p className="text-sm font-semibold text-red-400 mt-2">{error}</p>}
-
-                <DialogFooter className="mt-6 flex flex-col sm:flex-row gap-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => setIsOpen(false)}
-                    className="w-full sm:w-auto rounded-xl border border-white/5 text-zinc-400 hover:text-white hover:bg-white/5"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={isPending || !email.trim() || !projectId}
-                    className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl"
-                  >
-                    {isPending ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                        Inviting...
-                      </>
-                    ) : (
-                      "Send Invite"
-                    )}
-                  </Button>
-                </DialogFooter>
-              </form>
-            )}
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {/* Collaborators List */}
-      <div className="flex flex-col gap-4">
-        {initialMembers.length === 0 ? (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="glass-panel p-10 h-72 flex flex-col items-center justify-center text-center gap-4 border border-white/5 rounded-2xl"
-          >
-            <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-2">
-              <Users className="w-8 h-8 text-zinc-500" />
-            </div>
-            <div>
-              <h3 className="text-lg font-medium text-white mb-1">No Collaborators Yet</h3>
-              <p className="text-sm text-zinc-400 max-w-sm mx-auto">
-                Invite colleagues or sub-contractors to access and manage your BIM models.
+        {!hasProjects ? (
+          <div className="p-4 bg-amber-500/10 border border-amber-500/20 text-amber-300 rounded-xl flex items-start gap-3 mt-2">
+            <AlertCircle className="size-5 shrink-0 mt-0.5" />
+            <div className="text-sm">
+              <p className="font-semibold">No Projects Available</p>
+              <p className="mt-1 text-zinc-400">
+                Create a project first before inviting team members.{" "}
+                <Link
+                  href="/dashboard/projects"
+                  className="text-primary underline hover:text-primary/80"
+                >
+                  Create a project
+                </Link>
               </p>
             </div>
-          </motion.div>
+          </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <AnimatePresence>
-              {initialMembers.map((member, index) => (
-                <motion.div
-                  key={member.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ duration: 0.4, delay: index * 0.05 }}
-                >
-                  <Card className="glass-panel border border-white/5 hover:border-primary/20 bg-white/5 rounded-2xl overflow-hidden relative group transition-colors duration-300">
-                    <CardContent className="p-6 relative z-10 flex flex-col justify-between h-full">
-                        <div className="flex items-center gap-4 mb-4">
-                          <Avatar className="w-10 h-10 border border-primary/20 bg-primary/10 text-primary flex items-center justify-center font-bold">
-                            <AvatarFallback className="bg-transparent text-primary">{getInitials(member.email)}</AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0 flex-1">
-                            <h4 className="text-sm font-bold text-white truncate">{member.email}</h4>
-                            <span className="text-[10px] text-zinc-500 font-semibold flex items-center gap-1 mt-0.5">
-                              <Shield className="w-3 h-3 text-primary" />
-                              Role: {member.role.toUpperCase()}
-                            </span>
-                          </div>
-                          <button onClick={(e) => { e.stopPropagation(); setDeleteMemberId(member.id); }}
-                            className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 hover:text-red-300 transition-all opacity-0 group-hover:opacity-100 shrink-0"
-                            title="Remove member">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+          <form onSubmit={handleInvite} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="invite-email" className="text-sm font-semibold text-zinc-300">Email Address</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-zinc-500" />
+                <Input
+                  id="invite-email"
+                  type="email"
+                  placeholder="colleague@example.com"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  className="pl-9 bg-white/5 border-white/10 text-white rounded-xl focus:border-primary/50"
+                  required
+                  autoComplete="email"
+                />
+              </div>
+            </div>
 
-                      <div className="space-y-2 mt-2 pt-4 border-t border-white/5 text-[11px] text-zinc-400">
-                        <div className="flex justify-between">
-                          <span className="font-semibold">Project Assigned:</span>
-                          <span className="text-white font-bold max-w-[150px] truncate">{member.projectName || "Unknown Project"}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="font-semibold">Status:</span>
-                          <span className="text-emerald-400 font-bold">Joined</span>
-                        </div>
-                        <div className="flex justify-between items-center text-[10px] text-zinc-500 pt-1">
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            {new Date(member.joinedAt).toLocaleDateString()}
-                          </span>
-                        </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-zinc-300">Project</Label>
+              <Select
+                value={inviteProjectId}
+                onValueChange={(val) => setInviteProjectId(val || "")}
+                required
+              >
+                <SelectTrigger className="bg-white/5 border-white/10 text-white rounded-xl focus:border-primary/50">
+                  <SelectValue placeholder="Select a project" />
+                </SelectTrigger>
+                <SelectContent className="bg-zinc-950 border border-white/10 text-white rounded-xl">
+                  {projects.map((proj) => (
+                    <SelectItem key={proj.id} value={proj.id.toString()} className="focus:bg-primary/20 focus:text-white">
+                      {proj.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-zinc-300">Role</Label>
+              <Select
+                value={inviteRole}
+                onValueChange={(val) => setInviteRole(val || "viewer")}
+                required
+              >
+                <SelectTrigger className="bg-white/5 border-white/10 text-white rounded-xl focus:border-primary/50">
+                  <SelectValue placeholder="Select a role" />
+                </SelectTrigger>
+                <SelectContent className="bg-zinc-950 border border-white/10 text-white rounded-xl">
+                  {roleOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value} className="focus:bg-primary/20 focus:text-white">
+                      <div className="flex flex-col">
+                        <span>{opt.label}</span>
+                        <span className="text-[10px] text-zinc-500">{opt.description}</span>
                       </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              ))}
-            </AnimatePresence>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {inviteError && <p className="text-sm font-semibold text-red-400">{inviteError}</p>}
+
+            <DialogFooter className="mt-6 flex flex-col sm:flex-row gap-2">
+              <Button type="button" variant="ghost" onClick={() => setInviteOpen(false)}
+                className="rounded-xl border border-white/5 text-zinc-400 hover:text-white hover:bg-white/5">
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isPending || !inviteEmail.trim() || !inviteProjectId}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl">
+                {isPending ? <><Loader2 className="size-4 animate-spin mr-2" /> Sending...</> : "Send Invite"}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+
+  return (
+    <div className="flex flex-col gap-6 pb-10">
+      <PageHeader
+        title="Team"
+        description="Invite, organize, and manage permissions for project team members."
+        breadcrumbs={[{ label: "Team" }]}
+        primaryAction={
+          <Button className="gap-2" disabled={!hasProjects} onClick={() => setInviteOpen(true)}>
+            <UserPlus className="size-4" />
+            Invite Member
+          </Button>
+        }
+      />
+
+      {/* ── Project Filter ── */}
+      <div className="flex items-center justify-between">
+        {members.length > 0 && projects.length > 1 && (
+          <div className="flex items-center gap-2">
+            <Filter className="size-4 text-zinc-400 shrink-0" />
+            <Select value={projectFilter} onValueChange={(val) => setProjectFilter(val || "all")}>
+              <SelectTrigger className="h-9 w-48 bg-white/5 border-white/10 text-sm rounded-xl">
+                <SelectValue placeholder="All Projects" />
+              </SelectTrigger>
+              <SelectContent className="bg-zinc-950 border border-white/10 text-white rounded-xl">
+                <SelectItem value="all">All Projects</SelectItem>
+                {projects.map((p) => (
+                  <SelectItem
+                    key={p.id}
+                    value={p.id.toString()}
+                    className="focus:bg-primary/20 focus:text-white"
+                  >
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         )}
+        <div className="text-sm text-zinc-500 ml-auto">
+          {filteredMembers.length}{" "}
+          {filteredMembers.length === 1 ? "member" : "members"}
+        </div>
       </div>
 
-      {/* Delete confirmation dialog */}
-      <Dialog open={deleteMemberId !== null} onOpenChange={(open) => { if (!open) setDeleteMemberId(null); }}>
-        <DialogContent className="glass-panel border border-white/10 bg-zinc-950/95 text-white max-w-sm rounded-2xl p-6">
-          <DialogHeader className="mb-4">
-            <DialogTitle className="text-xl font-bold text-white flex items-center gap-2 text-red-400">
-              <Trash2 className="w-5 h-5" /> Remove Member
-            </DialogTitle>
-            <DialogDescription className="text-zinc-400">
-              Are you sure you want to remove this team member from the project?
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="flex flex-col sm:flex-row gap-2">
-            <Button type="button" variant="ghost" onClick={() => setDeleteMemberId(null)}
-              className="w-full sm:w-auto rounded-xl border border-white/5 text-zinc-400 hover:text-white hover:bg-white/5">Cancel</Button>
-            <Button onClick={handleRemoveMember} disabled={deleteIsPending}
-              className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl">
-              {deleteIsPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Removing...</> : "Remove Member"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* ── Empty State ── */}
+      {filteredMembers.length === 0 && !isPending && (
+        <EmptyState
+          icon={Users}
+          title="No Collaborators Yet"
+          description="Invite colleagues or subcontractors to access and manage your BIM models."
+          primaryAction={
+            hasProjects
+              ? {
+                  label: "Invite Member",
+                  onClick: () => setInviteOpen(true),
+                }
+              : undefined
+          }
+        />
+      )}
+
+      {/* ── Members Table ── */}
+      {filteredMembers.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-panel rounded-xl border border-white/5 overflow-hidden"
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-white/5 bg-white/[0.02]">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                    Name
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                    Email
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                    Role
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider hidden md:table-cell">
+                    Project
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider hidden sm:table-cell">
+                    Invited
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-zinc-400 uppercase tracking-wider w-12">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                <AnimatePresence initial={false}>
+                  {filteredMembers.map((member, index) => (
+                    <motion.tr
+                      key={member.id}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 8 }}
+                      transition={{ duration: 0.25, delay: index * 0.03 }}
+                      className="hover:bg-white/[0.02] transition-colors"
+                    >
+                      {/* Name */}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="size-8 border border-primary/20 bg-primary/10 shrink-0">
+                            <AvatarFallback className="text-xs text-primary font-medium bg-transparent">
+                              {getInitials(member)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm font-medium text-white truncate max-w-[160px]">
+                            {getDisplayName(member)}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Email */}
+                      <td className="px-4 py-3 text-sm text-zinc-400">
+                        <Tooltip>
+                          <TooltipTrigger className="truncate max-w-[180px] inline-block">
+                            {member.email}
+                          </TooltipTrigger>
+                          <TooltipContent side="top">
+                            {member.email}
+                          </TooltipContent>
+                        </Tooltip>
+                      </td>
+
+                      {/* Role */}
+                      <td className="px-4 py-3">
+                        <Select
+                          value={member.role}
+                          onValueChange={(val) =>
+                            handleRoleChange(member.id, val || "viewer")
+                          }
+                          disabled={isPending}
+                        >
+                          <SelectTrigger className="h-8 w-28 bg-white/5 border-white/10 text-xs rounded-lg">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="bg-zinc-950 border border-white/10 text-white rounded-xl">
+                            {roleOptions.map((opt) => (
+                              <SelectItem
+                                key={opt.value}
+                                value={opt.value}
+                                className="focus:bg-primary/20 focus:text-white"
+                              >
+                                <div className="flex flex-col">
+                                  <span className="text-xs font-medium">
+                                    {opt.label}
+                                  </span>
+                                  <span className="text-[10px] text-zinc-500">
+                                    {opt.description}
+                                  </span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </td>
+
+                      {/* Project */}
+                      <td className="px-4 py-3 text-sm text-zinc-300 hidden md:table-cell">
+                        <Tooltip>
+                          <TooltipTrigger className="truncate max-w-[160px] inline-block">
+                            {member.projectName || "—"}
+                          </TooltipTrigger>
+                          <TooltipContent side="top">
+                            {member.projectName || "Unknown project"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </td>
+
+                      {/* Status */}
+                      <td className="px-4 py-3">
+                        {isPendingMember(member) ? (
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-400 border border-amber-500/20">
+                                <span className="size-1.5 rounded-full bg-amber-400 animate-pulse" />
+                                Pending
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              Invite sent — waiting for acceptance
+                            </TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-400 border border-emerald-500/20">
+                                <span className="size-1.5 rounded-full bg-emerald-400" />
+                                Joined
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              Has accepted the invitation
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                      </td>
+
+                      {/* Invited Date */}
+                      <td className="px-4 py-3 text-sm text-zinc-500 hidden sm:table-cell">
+                        <span className="flex items-center gap-1.5">
+                          <Calendar className="size-3 text-zinc-600" />
+                          {new Date(member.joinedAt).toLocaleDateString()}
+                        </span>
+                      </td>
+
+                      {/* Actions Menu */}
+                      <td className="px-4 py-3 text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="size-8 data-[state=open]:bg-white/10"
+                                aria-label="Member actions"
+                              >
+                                <MoreHorizontal className="size-4 text-zinc-400" />
+                              </Button>
+                            }
+                          />
+                          <DropdownMenuContent
+                            align="end"
+                            className="bg-zinc-950 border border-white/10 text-white min-w-[160px] rounded-xl"
+                          >
+                            {isPendingMember(member) && (
+                              <DropdownMenuItem
+                                onClick={() => handleResend(member)}
+                                disabled={isPending}
+                                className="focus:bg-white/5 focus:text-white cursor-pointer"
+                              >
+                                <RefreshCw className="size-4 mr-2 text-zinc-400" />
+                                Resend Invite
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem
+                              onClick={() => setDeleteTarget(member)}
+                              disabled={isPending}
+                              className="focus:bg-red-500/10 focus:text-red-400 text-red-400 cursor-pointer"
+                            >
+                              <Trash2 className="size-4 mr-2" />
+                              Remove
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </td>
+                    </motion.tr>
+                  ))}
+                </AnimatePresence>
+              </tbody>
+            </table>
+          </div>
+        </motion.div>
+      )}
+
+      {/* ── Remove Confirm Dialog ── */}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="Remove Team Member"
+        description={
+          deleteTarget
+            ? `Are you sure you want to remove ${deleteTarget.email} from ${deleteTarget.projectName || "the project"}? They will lose access immediately.`
+            : "Are you sure you want to remove this team member?"
+        }
+        confirmLabel="Remove"
+        onConfirm={handleRemoveMember}
+        destructive
+        loading={deleteIsPending}
+      />
+
+      {/* ── Invite Dialog ── */}
+      {inviteDialogContent}
     </div>
   );
 }
