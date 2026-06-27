@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { auditLogs } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
+import * as Sentry from "@sentry/nextjs";
 
 export interface AuditLogEntry {
   action: string;
@@ -26,7 +27,11 @@ export async function logAction(entry: AuditLogEntry): Promise<void> {
     });
   } catch (error) {
     console.error("Failed to log audit action:", error);
-    // TODO: alert monitoring (e.g. Sentry.captureException) in production
+    if (process.env.NODE_ENV === "production" && process.env.SENTRY_DSN) {
+      Sentry.captureException(error, {
+        extra: { action: entry.action, targetType: entry.targetType, targetId: entry.targetId },
+      });
+    }
   }
 }
 
