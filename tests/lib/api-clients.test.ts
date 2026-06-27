@@ -3,6 +3,7 @@ import {
   BIMAgentClient,
   BIMCloudClient,
   BIMIndexClient,
+  BIMExtractClient,
   EcosystemError,
   checkHealth,
   getEcosystemHealth,
@@ -145,15 +146,92 @@ describe("api-clients", () => {
   });
 
   describe("getEcosystemHealth", () => {
-    it("aggregates all three services", async () => {
+    it("aggregates all four services", async () => {
       global.fetch = vi
         .fn()
         .mockImplementation(() => Promise.resolve(ok({ status: "healthy" }))) as unknown as typeof fetch;
       const res = await getEcosystemHealth();
-      expect(Object.keys(res).sort()).toEqual(["BIMAgent", "BIMCloud", "BIMIndex"]);
+      expect(Object.keys(res).sort()).toEqual(["BIMAgent", "BIMCloud", "BIMExtract", "BIMIndex"]);
       expect(res.BIMAgent.ok).toBe(true);
       expect(res.BIMCloud.ok).toBe(true);
       expect(res.BIMIndex.ok).toBe(true);
+      expect(res.BIMExtract.ok).toBe(true);
     });
   });
 });
+
+describe("BIMExtractClient", () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("health calls /health and returns status", async () => {
+    global.fetch = vi.fn().mockResolvedValue(ok({ status: "healthy" })) as unknown as typeof fetch;
+    const res = await new BIMExtractClient("http://extract").health();
+    expect(res.status).toBe("healthy");
+  });
+
+  it("startPipeline posts to /pipeline/{name} and returns job info", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      ok({ job_id: "j1", status_url: "/pipeline/ingest/j1/status", status: "running" }),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const res = await new BIMExtractClient("http://extract").startPipeline("ingest", {
+      source: "doc.pdf",
+    });
+    expect(res.job_id).toBe("j1");
+    expect(res.status).toBe("running");
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://extract/pipeline/ingest");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse((init?.body as string) || "{}")).toEqual({ source: "doc.pdf" });
+  });
+
+  it("startPipeline raises EcosystemError on non-2xx", async () => {
+    global.fetch = vi.fn().mockResolvedValue(ok({ detail: "validation error" }, 422)) as unknown as typeof fetch;
+    await expect(
+      new BIMExtractClient("http://extract").startPipeline("enrich", {}),
+    ).rejects.toMatchObject({
+      name: "EcosystemError",
+      service: "BIMExtract",
+      status: 422,
+    });
+  });
+
+  it("pollPipeline returns immediately when status is terminal", async () => {
+    global.fetch = vi.fn().mockResolvedValue(ok({ status: "completed", result: "ok" })) as unknown as typeof fetch;
+    const res = await new BIMExtractClient("http://extract").pollPipeline("ingest", "j1", {
+      interval: 100,
+      timeout: 5000,
+    });
+    expect(res.status).toBe("completed");
+  });
+
+  it("pollPipeline throws EcosystemError on timeout", async () => {
+    vi.useFakeTimers();
+    // Use mockImplementation so each fetch call gets a fresh Response body
+    global.fetch = vi.fn().mockImplementation(
+      () => Promise.resolve(ok({ status: "running" })),
+    ) as unknown as typeof fetch;
+    const client = new BIMExtractClient("http://extract");
+    const pollPromise = client.pollPipeline("ingest", "j1", {
+      interval: 100,
+      timeout: 500,
+    });
+
+    // Pre-attach catch handler to prevent unhandled rejection race
+    const caught = pollPromise.catch((e: unknown) => e);
+
+    // Advance timers past the timeout
+    await vi.advanceTimersByTimeAsync(600);
+
+    const error = await caught;
+    expect(error).toBeInstanceOf(EcosystemError);
+  });
+});
+
