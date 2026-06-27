@@ -6,8 +6,19 @@ export const dynamic = "force-dynamic";
 export default async function ModelsPage() {
   const [models, projects] = await Promise.all([
     getModels(),
-    getProjects()
+    getProjects(),
   ]);
 
-  return <ModelsClient initialModels={models} projects={projects} />;
+  const projectMap: Record<number, string> = {};
+  for (const project of projects) {
+    projectMap[project.id] = project.name;
+  }
+
+  return (
+    <ModelsClient
+      initialModels={models}
+      projectMap={projectMap}
+      projects={projects}
+    />
+  );
 }
