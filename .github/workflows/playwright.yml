@@ -34,11 +34,16 @@ jobs:
           path: BIMWeb/playwright-report/
           retention-days: 14
 
+  # Ecosystem API tests run against the meta-repo docker-compose stack (not this repo alone).
+  # Canonical workflow: ashishpatill/Retrieval_workspace — .github/workflows/ecosystem-e2e.yml
   ecosystem:
     timeout-minutes: 45
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          repository: ashishpatill/Retrieval_workspace
+          submodules: recursive
       - name: Build and start backend services
         run: |
           docker compose up -d --build
