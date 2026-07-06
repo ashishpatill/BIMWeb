@@ -123,6 +123,33 @@ describe("api-clients", () => {
       expect(hits).toHaveLength(1);
     });
 
+    it("search unwraps a { results: [...] } payload (BIMIndex server format)", async () => {
+      global.fetch = vi.fn().mockResolvedValue(
+        ok({ results: [{ id: "b", snippet: "hello" }], total: 1 }),
+      ) as unknown as typeof fetch;
+      const hits = await new BIMIndexClient("http://index").search("q", "vectorless");
+      expect(hits).toHaveLength(1);
+      expect(hits[0].snippet).toBe("hello");
+    });
+
+    it("ingest POSTs documents to /ingest", async () => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        ok({ status: "ok", indexed: 2, backend: "tantivy" }),
+      );
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      const res = await new BIMIndexClient("http://index").ingest([
+        { title: "Doc A", text: "content A" },
+      ]);
+      expect(res.indexed).toBe(2);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe("http://index/ingest");
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse((init?.body as string) || "{}")).toEqual({
+        documents: [{ title: "Doc A", text: "content A" }],
+      });
+    });
+
     it("search raises EcosystemError on non-2xx", async () => {
       global.fetch = vi.fn().mockResolvedValue(ok("err", 503)) as unknown as typeof fetch;
       await expect(new BIMIndexClient("http://index").search("q")).rejects.toBeInstanceOf(EcosystemError);
