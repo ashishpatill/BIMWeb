@@ -6,6 +6,7 @@
  *
  * @security Pro verify mandatory: no plaintext keys, constant-time compare,
  *           no key hashes in logs or responses, scope enforcement.
+ *           Rate limit: Upstash Redis when configured, else in-memory per-key map.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -14,33 +15,9 @@ import { apiKeys } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { validateKey, checkScope } from "@/lib/api-keys";
 import { recordApiKeyUsage } from "@/lib/actions";
+import { checkApiKeyRateLimit, clearRateLimit } from "@/lib/rate-limit";
 
-// ── Per-key in-memory rate limiter ──────────────────────────────────────────
-// Keyed by DB prefix. Upgrade to Redis/Upstash for multi-instance deployments.
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-
-function checkPerKeyRateLimit(prefix: string, limitPerMin: number): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(prefix);
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(prefix, {
-      count: 1,
-      resetAt: now + 60_000,
-    });
-    return true;
-  }
-  entry.count++;
-  return entry.count <= limitPerMin;
-}
-
-/** Clear all rate limit entries (useful for testing / key rotation). */
-export function clearRateLimit(prefix?: string): void {
-  if (prefix) {
-    rateLimitMap.delete(prefix);
-  } else {
-    rateLimitMap.clear();
-  }
-}
+export { clearRateLimit };
 
 // ── Result types ─────────────────────────────────────────────────────────────
 
@@ -154,8 +131,8 @@ export async function validateApiKey(
 
   const effectiveRateLimit = row.rateLimitPerMin ?? 60;
 
-  // Per-key rate limit
-  if (!checkPerKeyRateLimit(row.prefix, effectiveRateLimit)) {
+  // Per-key rate limit (Upstash when configured, else in-memory)
+  if (!(await checkApiKeyRateLimit(row.prefix, effectiveRateLimit))) {
     return { reason: "rate_limited" };
   }
 

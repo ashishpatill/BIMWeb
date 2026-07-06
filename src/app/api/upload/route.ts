@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
+import { getSessionUser } from "@/lib/session";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 
@@ -26,8 +26,7 @@ const ALLOWED_MIME_TYPES = [
 
 export async function POST(request: NextRequest) {
   // ── Kinde auth check ──────────────────────────────────────────────────────
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
