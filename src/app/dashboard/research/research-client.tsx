@@ -55,6 +55,11 @@ export interface ResearchClientProps {
     mode: string;
     createdAt: Date | null;
   }>;
+  modelIndex: Array<{
+    id: number;
+    projectId: number;
+    name: string;
+  }>;
 }
 
 type ResearchMode = "smart" | "keyword" | "semantic" | "relationships";
@@ -110,16 +115,28 @@ function getHitUrl(hit: IndexSearchHit): string | null {
     : null;
 }
 
-function getHitModelLink(hit: IndexSearchHit): string | null {
-  const modelId = hit.model_id;
-  const elementId = hit.element_id;
-  if (modelId && elementId) {
-    return `/dashboard/projects/0/models/${modelId}?element=${elementId}`;
+function getHitModelLink(
+  hit: IndexSearchHit,
+  modelIndex: ResearchClientProps["modelIndex"],
+): string | null {
+  const rawModelId = hit.model_id ?? hit.modelId;
+  const elementId = hit.element_id ?? hit.elementId;
+  const rawProjectId = hit.project_id ?? hit.projectId;
+
+  if (!rawModelId) return null;
+
+  const modelId = Number(rawModelId);
+  if (Number.isNaN(modelId)) return null;
+
+  const indexed = modelIndex.find((m) => m.id === modelId);
+  const projectId = indexed?.projectId ?? Number(rawProjectId);
+  if (!projectId || Number.isNaN(projectId)) return null;
+
+  const element = elementId ? String(elementId) : null;
+  if (element) {
+    return `/dashboard/projects/${projectId}/models/${modelId}?element=${encodeURIComponent(element)}`;
   }
-  if (modelId) {
-    return `/dashboard/projects/0/models/${modelId}`;
-  }
-  return null;
+  return `/dashboard/projects/${projectId}/models/${modelId}`;
 }
 
 function buildTraceTimeline(
@@ -308,13 +325,19 @@ function ConnectionBanner({ offline, degraded }: { offline: boolean; degraded: b
 
 // ─── Source Card ─────────────────────────────────────────
 
-function SourceCard({ hit }: { hit: IndexSearchHit }) {
+function SourceCard({
+  hit,
+  modelIndex,
+}: {
+  hit: IndexSearchHit;
+  modelIndex: ResearchClientProps["modelIndex"];
+}) {
   const title = getHitTitle(hit);
   const snippet = getHitSnippet(hit);
   const score = getHitScore(hit);
   const source = getHitSource(hit);
   const url = getHitUrl(hit);
-  const modelLink = getHitModelLink(hit);
+  const modelLink = getHitModelLink(hit, modelIndex);
   const [expanded, setExpanded] = useState(false);
 
   // Extra fields for the "Details" expandable
@@ -457,6 +480,7 @@ function TraceTimeline({ trace }: { trace: Record<string, unknown> }) {
 export function ResearchClient({
   ecosystemHealth,
   searchHistory: initialHistory,
+  modelIndex,
 }: ResearchClientProps) {
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
@@ -983,7 +1007,7 @@ export function ResearchClient({
                   </h3>
                   <div className="space-y-2">
                     {traceSources.map((hit, i) => (
-                      <SourceCard key={i} hit={hit} />
+                      <SourceCard key={i} hit={hit} modelIndex={modelIndex} />
                     ))}
                   </div>
                 </div>
@@ -1003,7 +1027,7 @@ export function ResearchClient({
               </p>
               <div className="space-y-2">
                 {indexHits.map((hit, i) => (
-                  <SourceCard key={i} hit={hit} />
+                  <SourceCard key={i} hit={hit} modelIndex={modelIndex} />
                 ))}
               </div>
             </motion.div>
