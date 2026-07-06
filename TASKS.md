@@ -29,9 +29,13 @@
 - `tests/app/search.test.tsx` — 1 test
 - `tests/app/deployments.test.tsx` — 1 test
 
-### E2E (Playwright) — NOT YET IMPLEMENTED
-- `@playwright/test` dep is in `package.json` but no `playwright.config.ts` or e2e specs exist.
-- 12 journey specs designed (auth, onboarding, project CRUD, IFC upload, measurement, research, documents, team invite, API key, audit, health, workspace isolation) — skipped pending live env in CI.
+### E2E (Playwright) — **DONE** (smoke + platform API + a11y)
+
+- `playwright.config.ts` + 15 journey specs under `tests/e2e/`
+- `E2E_TEST_BYPASS` auth bypass via `src/lib/session.ts`
+- `platform-api.spec.ts` for docker-compose backend health (`ECOSYSTEM_E2E=true`)
+- `a11y.spec.ts` with `@axe-core/playwright`
+- CI: `.github/workflows/playwright.yml` (smoke, ecosystem, dashboard jobs)
 
 ---
 
@@ -172,7 +176,7 @@
 **Status**: ✅ Full v1 REST API with per-user key validation.
 - `api_keys` table in schema + migration `0002` (generated, NOT pushed)
 - `src/lib/api-keys.ts` — `hashKey()`, `generateApiKey()`, `validateKey()` (SHA-256 + constant-time `crypto.timingSafeEqual`), `checkScope()`
-- Per-key in-memory rate limit (429 + `Retry-After`); upgrade to Redis noted
+- Per-key rate limit via Upstash Redis (`UPSTASH_REDIS_REST_*`) with in-memory fallback (429 + `Retry-After`)
 - 9 endpoint files:
   - `GET/POST /api/v1/projects`, `GET/PATCH/DELETE /api/v1/projects/[id]`
   - `GET/POST /api/v1/models`, `GET/DELETE /api/v1/models/[id]`
@@ -244,6 +248,16 @@ New tables: `api_keys`, `search_history`, `documents`, `notification_preferences
 | Gap | Priority | Notes |
 |-----|----------|-------|
 | Push migration `0002` to DB | High | Must run `pnpm drizzle-kit push` against live Neon DB after human review |
-| Playwright E2E in CI | Medium | `@playwright/test` installed; 12 journeys designed; no `playwright.config.ts` or e2e specs yet |
-| Upgrade rate limiter to Redis/Upstash | Low | Current per-key in-memory (resets on restart); Redis for persistent rate limiting |
-| A11Y pass | Low | Lighthouse a11y target ≥95; axe-core scan pending |
+| Playwright dashboard E2E in CI | Medium | `E2E_TEST_BYPASS` + smoke/a11y/platform-api jobs in `playwright.yml`; dashboard specs need `DATABASE_URL` secret |
+| ColQwen GPU production | Low | Set `DENSE_EMBEDDING_BACKEND=colqwen2.5` + GPU deps on BIMIndex host |
+| Graph entity extraction | Low | Kuzu indexes Document→Page; no NER/entity pipeline yet |
+
+---
+
+## Recently completed (2026-07-07)
+
+- **E2E auth bypass**: `src/lib/session.ts` with `E2E_TEST_BYPASS=true` for Playwright/CI
+- **Upstash rate limiter**: `src/lib/rate-limit.ts` + `@upstash/ratelimit`; in-memory fallback when unset
+- **Playwright CI**: smoke (landing, a11y, redirects), ecosystem (`platform-api.spec.ts`), dashboard job with bypass
+- **A11Y**: `@axe-core/playwright` + `tests/e2e/a11y.spec.ts` (WCAG 2.x serious/critical gate)
+- **197 unit tests** (+5 session/rate-limit)
