@@ -35,7 +35,7 @@ import {
   updateDocumentStatus,
   deleteDocument,
 } from "@/lib/actions";
-import { bimExtract } from "@/lib/api-clients";
+import { ingestDocumentViaEcosystem } from "@/lib/document-ingestion";
 
 // ─── Types ─────────────────────────────────────────────────────
 
@@ -268,60 +268,51 @@ export function DocumentsClient({
         const doc = docResult.document;
         setUploadProgress(100);
 
-        // Step 3: Start BIMExtract pipeline
+        // Step 3: Run extract → index pipeline
         setDocuments((prev) => [doc, ...prev]);
         toast.success("Document uploaded. Starting ingestion pipeline...");
 
-        try {
-          const pipeline = await bimExtract.startPipeline("ingest", {
-            doc_path: doc.fileUrl,
-            text_content: null,
-          });
+        await updateDocumentStatus(doc.id, "parsing");
+        setDocuments((prev) =>
+          prev.map((d) => (d.id === doc.id ? { ...d, status: "parsing" } : d))
+        );
 
-          // Update status to "parsing"
-          await updateDocumentStatus(doc.id, "parsing");
+        try {
+          await updateDocumentStatus(doc.id, "indexing");
           setDocuments((prev) =>
-            prev.map((d) => (d.id === doc.id ? { ...d, status: "parsing" } : d))
+            prev.map((d) => (d.id === doc.id ? { ...d, status: "indexing" } : d))
           );
 
-          // Step 4: Poll for completion
-          const finalStatus = await bimExtract.pollPipeline("ingest", pipeline.job_id, {
-            interval: 2000,
-            timeout: 120000,
-          });
+          const result = await ingestDocumentViaEcosystem(
+            { docName: doc.name, fileUrl: doc.fileUrl },
+            { bimIndexHealthy },
+          );
 
-          const pipelineResultStatus = finalStatus?.status as string;
-          const isSuccess =
-            pipelineResultStatus === "completed" || pipelineResultStatus === "ready";
-
-          if (isSuccess) {
-            const chunks =
-              typeof finalStatus?.chunks === "number"
-                ? finalStatus.chunks
-                : typeof finalStatus?.chunk_count === "number"
-                  ? finalStatus.chunk_count
-                  : undefined;
-
-            await updateDocumentStatus(doc.id, "ready", chunks);
+          if (result.success) {
+            await updateDocumentStatus(doc.id, "ready", result.chunks);
             setDocuments((prev) =>
               prev.map((d) =>
                 d.id === doc.id
                   ? {
                       ...d,
                       status: "ready",
-                      chunks: chunks ?? d.chunks,
+                      chunks: result.chunks ?? d.chunks,
                       indexedAt: new Date(),
                     }
                   : d
               )
             );
-            toast.success("Document indexed and ready for search.");
+            toast.success(
+              result.indexSkipped
+                ? "Document parsed. BIMIndex offline — search indexing skipped."
+                : "Document indexed and ready for search.",
+            );
           } else {
             await updateDocumentStatus(doc.id, "failed");
             setDocuments((prev) =>
               prev.map((d) => (d.id === doc.id ? { ...d, status: "failed" } : d))
             );
-            toast.error("Ingestion pipeline failed. Check BIMExtract logs.");
+            toast.error(result.error ?? "Ingestion pipeline failed. Check BIMExtract logs.");
           }
         } catch (pipelineError) {
           // Pipeline call failed (e.g., BIMExtract offline)
@@ -346,7 +337,7 @@ export function DocumentsClient({
 
       router.refresh();
     },
-    [workspaceId, router]
+    [workspaceId, router, bimIndexHealthy]
   );
 
   // ── Handle file drop/select ──
@@ -418,53 +409,46 @@ export function DocumentsClient({
       await updateDocumentStatus(doc.id, "pending");
 
       try {
-        const pipeline = await bimExtract.startPipeline("ingest", {
-          doc_path: doc.fileUrl,
-          text_content: null,
-        });
-
         await updateDocumentStatus(doc.id, "parsing");
         setDocuments((prev) =>
           prev.map((d) => (d.id === doc.id ? { ...d, status: "parsing" } : d))
         );
 
-        const finalStatus = await bimExtract.pollPipeline("ingest", pipeline.job_id, {
-          interval: 2000,
-          timeout: 120000,
-        });
+        await updateDocumentStatus(doc.id, "indexing");
+        setDocuments((prev) =>
+          prev.map((d) => (d.id === doc.id ? { ...d, status: "indexing" } : d))
+        );
 
-        const pipelineResultStatus = finalStatus?.status as string;
-        const isSuccess =
-          pipelineResultStatus === "completed" || pipelineResultStatus === "ready";
+        const result = await ingestDocumentViaEcosystem(
+          { docName: doc.name, fileUrl: doc.fileUrl },
+          { bimIndexHealthy },
+        );
 
-        if (isSuccess) {
-          const chunks =
-            typeof finalStatus?.chunks === "number"
-              ? finalStatus.chunks
-              : typeof finalStatus?.chunk_count === "number"
-                ? finalStatus.chunk_count
-                : undefined;
-
-          await updateDocumentStatus(doc.id, "ready", chunks);
+        if (result.success) {
+          await updateDocumentStatus(doc.id, "ready", result.chunks);
           setDocuments((prev) =>
             prev.map((d) =>
               d.id === doc.id
                 ? {
                     ...d,
                     status: "ready",
-                    chunks: chunks ?? d.chunks,
+                    chunks: result.chunks ?? d.chunks,
                     indexedAt: new Date(),
                   }
                 : d
             )
           );
-          toast.success("Document re-indexed successfully.");
+          toast.success(
+            result.indexSkipped
+              ? "Document parsed. BIMIndex offline — search indexing skipped."
+              : "Document re-indexed successfully.",
+          );
         } else {
           await updateDocumentStatus(doc.id, "failed");
           setDocuments((prev) =>
             prev.map((d) => (d.id === doc.id ? { ...d, status: "failed" } : d))
           );
-          toast.error("Re-run pipeline failed.");
+          toast.error(result.error ?? "Re-run pipeline failed.");
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Pipeline error";
@@ -477,7 +461,7 @@ export function DocumentsClient({
 
       router.refresh();
     },
-    [bimExtractHealthy, router]
+    [bimExtractHealthy, bimIndexHealthy, router]
   );
 
   // ── Refresh list ──
