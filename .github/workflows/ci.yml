@@ -28,7 +28,16 @@ jobs:
         with:
           version: 9
       - run: pnpm install
-      - run: pnpm build
+      - name: Build (typecheck)
+        env:
+          KINDE_CLIENT_ID: ci_placeholder
+          KINDE_CLIENT_SECRET: ci_placeholder
+          KINDE_ISSUER_URL: https://example.kinde.com
+          KINDE_SITE_URL: http://localhost:3000
+          KINDE_POST_LOGOUT_REDIRECT_URL: http://localhost:3000
+          KINDE_POST_LOGIN_REDIRECT_URL: http://localhost:3000/dashboard
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+        run: pnpm build
   test:
     runs-on: ubuntu-latest
     needs: [lint, typecheck]
