@@ -29,5 +29,9 @@ export default defineConfig({
     url: "http://localhost:3000",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    env: {
+      E2E_TEST_BYPASS: process.env.E2E_TEST_BYPASS || "false",
+      ...(process.env.DATABASE_URL ? { DATABASE_URL: process.env.DATABASE_URL } : {}),
+    },
   },
 });
