@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   ModelViewer,
   type ViewerStatus,
@@ -75,6 +76,8 @@ export function ViewerClient({
   modelUrl,
   fileType,
 }: ViewerClientProps) {
+  const searchParams = useSearchParams();
+  const highlightElementId = searchParams.get("element");
   const [, startTransition] = useTransition();
 
   // Status
@@ -585,6 +588,7 @@ export function ViewerClient({
             onMeasurementsChange={setMeasurements}
             onTreeChange={handleTreeChange}
             onSectionPlanesChange={handleSectionPlanesChange}
+            highlightElementId={highlightElementId}
           />
 
           {/* Section plane slider bar (bottom) */}
