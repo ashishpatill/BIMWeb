@@ -52,6 +52,8 @@ export interface ModelViewerProps {
   onTreeChange?: (tree: ModelTreeNode[]) => void;
   onSectionPlanesChange?: (planes: SectionPlaneState[]) => void;
   showSampleBuilding?: boolean;
+  /** IFC express ID, global ID, or mesh name to highlight when the model is ready. */
+  highlightElementId?: string | null;
 }
 
 // ── Component ──────────────────────────────────────────────────────
@@ -69,6 +71,7 @@ export function ModelViewer({
   onTreeChange,
   onSectionPlanesChange,
   showSampleBuilding = false,
+  highlightElementId = null,
 }: ModelViewerProps) {
   const [, startTransition] = useTransition();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -768,6 +771,95 @@ export function ModelViewer({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Deep-link element highlight (?element=expressID) ─────────────
+
+  useEffect(() => {
+    if (status !== "ready" || !highlightElementId?.trim() || !sceneRef.current) {
+      return;
+    }
+
+    const { modelGroup, camera, controls } = sceneRef.current;
+    const targetKey = highlightElementId.trim();
+    let targetMesh: THREE.Mesh | null = null;
+
+    const matchesMesh = (mesh: THREE.Mesh): boolean => {
+      const ud = mesh.userData as { expressID?: number; globalId?: string };
+      return (
+        String(ud.expressID) === targetKey ||
+        ud.globalId === targetKey ||
+        mesh.name === targetKey ||
+        String(mesh.id) === targetKey
+      );
+    };
+
+    modelGroup.traverse((child) => {
+      if (child instanceof THREE.Mesh && matchesMesh(child)) {
+        targetMesh = child;
+      }
+    });
+
+    if (!targetMesh && ifcDataRef.current) {
+      const el = ifcDataRef.current.elements.find(
+        (e) =>
+          String(e.expressID) === targetKey ||
+          e.globalId === targetKey ||
+          e.name === targetKey,
+      );
+      if (el) {
+        modelGroup.traverse((child) => {
+          if (
+            child instanceof THREE.Mesh &&
+            (child.userData as { expressID?: number }).expressID === el.expressID
+          ) {
+            targetMesh = child;
+          }
+        });
+      }
+    }
+
+    if (!targetMesh) return;
+
+    modelGroup.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      const mat = child.material as THREE.MeshStandardMaterial;
+      if (!child.userData._originalMaterial) {
+        child.userData._originalMaterial = mat;
+      }
+      if (child === targetMesh) {
+        const highlightMat = mat.clone();
+        highlightMat.emissive = new THREE.Color(0xffaa00);
+        highlightMat.emissiveIntensity = 0.55;
+        child.material = highlightMat;
+      } else {
+        const dimMat = mat.clone();
+        dimMat.transparent = true;
+        dimMat.opacity = 0.2;
+        child.material = dimMat;
+      }
+    });
+
+    const box = new THREE.Box3().setFromObject(targetMesh);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z, 0.5);
+    controls.target.copy(center);
+    camera.position.set(
+      center.x + maxDim * 2.5,
+      center.y + maxDim * 1.5,
+      center.z + maxDim * 2.5,
+    );
+    camera.lookAt(center);
+
+    return () => {
+      modelGroup.traverse((child) => {
+        if (child instanceof THREE.Mesh && child.userData._originalMaterial) {
+          child.material = child.userData._originalMaterial as THREE.Material;
+          delete child.userData._originalMaterial;
+        }
+      });
+    };
+  }, [status, highlightElementId]);
 
   // ── Unsupport render ────────────────────────────────────────
 

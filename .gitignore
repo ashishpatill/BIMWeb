@@ -1,4 +1,10 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# platform orchestrator runtime
+.platform-pids/
+.platform-logs/
+
+# local e2e env (copy from env.e2e.example)
+.env.e2e
+env.e2e
 
 # dependencies
 /node_modules

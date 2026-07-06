@@ -147,6 +147,20 @@ export interface IndexSearchHit {
   [key: string]: unknown;
 }
 
+export interface IndexIngestDocument {
+  title: string;
+  text?: string;
+  body?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface IndexIngestResponse {
+  status: string;
+  indexed: number;
+  backend?: string;
+  error?: string;
+}
+
 export class BIMIndexClient {
   constructor(private baseUrl: string = BIMINDEX_URL) {}
 
@@ -165,7 +179,29 @@ export class BIMIndexClient {
       throw new EcosystemError("BIMIndex", endpoint, res.status, await res.text());
     }
     const data = await parseJson(res);
-    return (Array.isArray(data) ? data : (data as Record<string, unknown>)?.hits ?? []) as IndexSearchHit[];
+    if (Array.isArray(data)) return data as IndexSearchHit[];
+    const record = data as Record<string, unknown>;
+    const hits = record.results ?? record.hits ?? [];
+    return (Array.isArray(hits) ? hits : []) as IndexSearchHit[];
+  }
+
+  /** POST /ingest — index parsed document chunks into the live retrieval backends. */
+  async ingest(documents: IndexIngestDocument[]): Promise<IndexIngestResponse> {
+    const endpoint = "/ingest";
+    let res: Response;
+    try {
+      res = await fetchWithTimeout(`${this.baseUrl}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documents }),
+      });
+    } catch (e) {
+      throw new EcosystemError("BIMIndex", endpoint, 0, (e as Error).message);
+    }
+    if (!res.ok) {
+      throw new EcosystemError("BIMIndex", endpoint, res.status, await res.text());
+    }
+    return (await parseJson(res)) as IndexIngestResponse;
   }
 
   async health(): Promise<{ status: string }> {
