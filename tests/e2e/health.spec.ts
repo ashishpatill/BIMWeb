@@ -1,15 +1,15 @@
 import { test, expect } from "@playwright/test";
+import { hasDashboardE2E } from "./helpers";
 
 /**
  * Platform Health: view 4 service cards, run test query, see trace timeline.
- * Requires live Kinde + all 4 ecosystem services (BIMAgent, BIMIndex,
- * BIMExtract, BIMCloud).
+ * Requires live ecosystem services; auth via Kinde session or E2E_TEST_BYPASS.
  */
 
 test.describe("Platform Health", () => {
   test.skip(
-    !process.env.E2E_BASE_URL,
-    "Skipped: requires live Kinde + all 4 ecosystem services. Run via CI with E2E_BASE_URL set.",
+    !hasDashboardE2E(),
+    "Skipped: set E2E_TEST_BYPASS=true or E2E_BASE_URL for dashboard E2E.",
   );
 
   test("health page shows four service cards", async ({ page }) => {

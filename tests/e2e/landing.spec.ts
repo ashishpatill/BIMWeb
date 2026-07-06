@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { hasDashboardE2E } from "./helpers";
 
 test.describe("Landing page", () => {
   test("renders hero, nav links, auth buttons, and all sections", async ({ page }) => {
@@ -57,8 +58,8 @@ test.describe("Landing page", () => {
     // This verifies the signed-in rendering path of the landing page.
     // Requires a valid Kinde session cookie — cannot be set without live auth.
     test.skip(
-      !process.env.E2E_BASE_URL,
-      "Skipped: requires authenticated Kinde session. Run via CI with E2E_BASE_URL set.",
+      !hasDashboardE2E(),
+      "Skipped: set E2E_TEST_BYPASS=true or E2E_BASE_URL for signed-in landing test.",
     );
 
     await page.goto("/");
