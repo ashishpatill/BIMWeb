@@ -52,6 +52,8 @@ export interface ModelViewerProps {
   onTreeChange?: (tree: ModelTreeNode[]) => void;
   onSectionPlanesChange?: (planes: SectionPlaneState[]) => void;
   showSampleBuilding?: boolean;
+  /** IFC expressID, GlobalId, or mesh name to isolate/highlight from ?element= URL param */
+  focusElementId?: string | null;
 }
 
 // ── Component ──────────────────────────────────────────────────────
@@ -69,6 +71,7 @@ export function ModelViewer({
   onTreeChange,
   onSectionPlanesChange,
   showSampleBuilding = false,
+  focusElementId = null,
 }: ModelViewerProps) {
   const [, startTransition] = useTransition();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -122,6 +125,45 @@ export function ModelViewer({
     },
     [onProgress]
   );
+
+  const applyElementFocus = useCallback((elementId: string) => {
+    const group = sceneRef.current?.modelGroup;
+    if (!group) return;
+    const needle = elementId.toLowerCase();
+    let matched: THREE.Object3D | null = null;
+    group.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      const ud = child.userData || {};
+      const candidates = [
+        String(ud.elementId ?? ""),
+        String(ud.expressID ?? ""),
+        String(ud.globalId ?? ""),
+        child.name,
+      ].map((s) => s.toLowerCase());
+      if (candidates.some((c) => c && (c === needle || c.includes(needle)))) {
+        matched = child;
+      }
+    });
+    group.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      const mat = child.material as THREE.MeshStandardMaterial;
+      if (child === matched) {
+        mat.emissive = new THREE.Color(0x3b82f6);
+        mat.emissiveIntensity = 0.45;
+        child.visible = true;
+      } else {
+        mat.emissive = new THREE.Color(0x000000);
+        mat.emissiveIntensity = 0;
+        child.visible = false;
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (status === "ready" && focusElementId) {
+      applyElementFocus(focusElementId);
+    }
+  }, [status, focusElementId, applyElementFocus]);
 
   // ── Private helpers ──────────────────────────────────────────────
 
@@ -273,7 +315,12 @@ export function ModelViewer({
           0
         );
         mesh.name = el.name;
-        mesh.userData = { expressID: el.expressID, type: el.type };
+        mesh.userData = {
+          expressID: el.expressID,
+          globalId: el.globalId,
+          type: el.type,
+          elementId: String(el.expressID),
+        };
         group.add(mesh);
       }
 
