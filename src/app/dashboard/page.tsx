@@ -1,4 +1,4 @@
-import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
+import { getSessionUser } from "@/lib/session";
 import {
   getProjects,
   getModels,
@@ -17,8 +17,7 @@ import type { RecentProject, ActivityItem, EcosystemHealthMap } from "./dashboar
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const { getUser } = getKindeServerSession();
-  const kindeUser = await getUser();
+  const kindeUser = await getSessionUser();
 
   const [allProjects, models, team, documents, auditLogs, ecosystemHealth, onboarding] =
     await Promise.all([

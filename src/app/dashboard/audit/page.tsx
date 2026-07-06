@@ -1,4 +1,4 @@
-import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
+import { getSessionUser } from "@/lib/session";
 import { db } from "@/db";
 import { auditLogs, users, projects } from "@/db/schema";
 import { eq, desc, like, and, gte, lte, sql } from "drizzle-orm";
@@ -101,8 +101,7 @@ export default async function AuditPage({
 }: {
   searchParams: Promise<AuditSearchParams>;
 }) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) {
     return <AuditClient auditLogs={[]} users={[]} projects={[]} error="Not authenticated" />;
   }

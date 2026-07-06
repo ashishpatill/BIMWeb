@@ -1,4 +1,4 @@
-import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
+import { isSessionAuthenticated } from "@/lib/session";
 import { AcceptInviteClient } from "./accept-invite-client";
 import { LoginLink } from "@kinde-oss/kinde-auth-nextjs/components";
 import { AlertCircle, Loader2 } from "lucide-react";
@@ -10,8 +10,7 @@ interface InvitePageProps {
 
 export default async function InvitePage({ searchParams }: InvitePageProps) {
   const { token } = await searchParams;
-  const { isAuthenticated } = getKindeServerSession();
-  const authenticated = await isAuthenticated();
+  const authenticated = await isSessionAuthenticated();
 
   if (!token) {
     return (

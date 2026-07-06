@@ -113,11 +113,12 @@ function getHitUrl(hit: IndexSearchHit): string | null {
 function getHitModelLink(hit: IndexSearchHit): string | null {
   const modelId = hit.model_id;
   const elementId = hit.element_id;
+  const projectId = hit.project_id ?? hit.projectId ?? 0;
   if (modelId && elementId) {
-    return `/dashboard/projects/0/models/${modelId}?element=${elementId}`;
+    return `/dashboard/projects/${projectId}/models/${modelId}?element=${encodeURIComponent(String(elementId))}`;
   }
   if (modelId) {
-    return `/dashboard/projects/0/models/${modelId}`;
+    return `/dashboard/projects/${projectId}/models/${modelId}`;
   }
   return null;
 }

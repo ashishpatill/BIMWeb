@@ -1,4 +1,4 @@
-import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
+import { isSessionAuthenticated, getSessionUser } from "@/lib/session";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -9,8 +9,7 @@ import { getUserWorkspaces, createWorkspace } from "@/lib/workspace";
 
 async function handleCreateWorkspace(name: string) {
   "use server";
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) return { success: false as const, error: "Not authenticated" };
 
   try {
@@ -37,15 +36,13 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { isAuthenticated, getUser } = getKindeServerSession();
-
-  if (!(await isAuthenticated())) {
+  if (!(await isSessionAuthenticated())) {
     redirect("/");
   }
 
   await syncUser();
 
-  const user = await getUser();
+  const user = await getSessionUser();
 
   // Fetch data for sidebar and top-nav
   const [workspaces, projects, allModels, teamMembers, auditEvents] = await Promise.all([

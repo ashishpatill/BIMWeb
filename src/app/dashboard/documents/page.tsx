@@ -1,4 +1,4 @@
-import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
+import { getSessionUser } from "@/lib/session";
 import { getDocuments, getEcosystemHealthForOverview } from "@/lib/actions";
 import { db } from "@/db";
 import { workspaces } from "@/db/schema";
@@ -8,8 +8,7 @@ import { DocumentsClient } from "./documents-client";
 export const dynamic = "force-dynamic";
 
 export default async function DocumentsPage() {
-  const [{ getUser }] = await Promise.all([Promise.resolve(getKindeServerSession())]);
-  const kindeUser = await getUser();
+  const kindeUser = await getSessionUser();
 
   const [documents, ecosystemHealth] = await Promise.all([
     getDocuments(),

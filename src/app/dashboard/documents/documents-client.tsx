@@ -35,7 +35,7 @@ import {
   updateDocumentStatus,
   deleteDocument,
 } from "@/lib/actions";
-import { bimExtract } from "@/lib/api-clients";
+import { bimExtract, bimIndex } from "@/lib/api-clients";
 
 // ─── Types ─────────────────────────────────────────────────────
 
@@ -107,6 +107,52 @@ function getStatusConfig(status: string) {
     dot: "bg-zinc-500",
     bg: "bg-zinc-500/10 text-zinc-600 dark:text-zinc-400",
   };
+}
+
+async function finalizePipelineIndex(
+  finalStatus: Record<string, unknown>,
+  docLabel: string,
+): Promise<number | undefined> {
+  const indexed =
+    typeof finalStatus.indexed === "number" ? finalStatus.indexed : 0;
+  const chunkCount =
+    typeof finalStatus.chunk_count === "number"
+      ? finalStatus.chunk_count
+      : typeof finalStatus.chunks === "number"
+        ? finalStatus.chunks
+        : undefined;
+
+  if (indexed > 0) {
+    return chunkCount ?? indexed;
+  }
+
+  const rawChunks = finalStatus.chunks;
+  if (!Array.isArray(rawChunks) || rawChunks.length === 0) {
+    return chunkCount;
+  }
+
+  const documents = rawChunks
+    .map((chunk, i) => {
+      const c = chunk as Record<string, unknown>;
+      const body = String(c.content ?? c.text ?? c.original_content ?? "").trim();
+      if (!body) return null;
+      return {
+        title: String(c.title ?? `${docLabel}-${i + 1}`),
+        body,
+      };
+    })
+    .filter((d): d is { title: string; body: string } => d !== null);
+
+  if (documents.length === 0) {
+    return chunkCount;
+  }
+
+  try {
+    const result = await bimIndex.ingest(documents);
+    return result.indexed ?? documents.length;
+  } catch {
+    return chunkCount ?? documents.length;
+  }
 }
 
 function getMimeIcon(mimeType: string | null) {
@@ -275,7 +321,7 @@ export function DocumentsClient({
         try {
           const pipeline = await bimExtract.startPipeline("ingest", {
             doc_path: doc.fileUrl,
-            text_content: null,
+            text_content: "",
           });
 
           // Update status to "parsing"
@@ -295,12 +341,15 @@ export function DocumentsClient({
             pipelineResultStatus === "completed" || pipelineResultStatus === "ready";
 
           if (isSuccess) {
-            const chunks =
-              typeof finalStatus?.chunks === "number"
-                ? finalStatus.chunks
-                : typeof finalStatus?.chunk_count === "number"
-                  ? finalStatus.chunk_count
-                  : undefined;
+            await updateDocumentStatus(doc.id, "indexing");
+            setDocuments((prev) =>
+              prev.map((d) => (d.id === doc.id ? { ...d, status: "indexing" } : d))
+            );
+
+            const chunks = await finalizePipelineIndex(
+              finalStatus as Record<string, unknown>,
+              doc.name,
+            );
 
             await updateDocumentStatus(doc.id, "ready", chunks);
             setDocuments((prev) =>
@@ -420,7 +469,7 @@ export function DocumentsClient({
       try {
         const pipeline = await bimExtract.startPipeline("ingest", {
           doc_path: doc.fileUrl,
-          text_content: null,
+          text_content: "",
         });
 
         await updateDocumentStatus(doc.id, "parsing");
@@ -438,12 +487,15 @@ export function DocumentsClient({
           pipelineResultStatus === "completed" || pipelineResultStatus === "ready";
 
         if (isSuccess) {
-          const chunks =
-            typeof finalStatus?.chunks === "number"
-              ? finalStatus.chunks
-              : typeof finalStatus?.chunk_count === "number"
-                ? finalStatus.chunk_count
-                : undefined;
+          await updateDocumentStatus(doc.id, "indexing");
+          setDocuments((prev) =>
+            prev.map((d) => (d.id === doc.id ? { ...d, status: "indexing" } : d))
+          );
+
+          const chunks = await finalizePipelineIndex(
+            finalStatus as Record<string, unknown>,
+            doc.name,
+          );
 
           await updateDocumentStatus(doc.id, "ready", chunks);
           setDocuments((prev) =>

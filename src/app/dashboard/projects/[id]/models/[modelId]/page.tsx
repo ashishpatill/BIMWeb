@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { getProject } from "@/lib/actions";
 import { getModelById } from "./get-model";
@@ -41,13 +42,15 @@ export default async function ModelViewerPage({ params }: PageProps) {
     : "unknown";
 
   return (
-    <ViewerClient
-      projectId={projectId}
-      projectName={project.name}
-      modelId={modelIdNum}
-      modelName={model.name}
-      modelUrl={model.fileUrl || null}
-      fileType={fileType}
-    />
+    <Suspense fallback={<div className="p-8 text-zinc-400">Loading viewer…</div>}>
+      <ViewerClient
+        projectId={projectId}
+        projectName={project.name}
+        modelId={modelIdNum}
+        modelName={model.name}
+        modelUrl={model.fileUrl || null}
+        fileType={fileType}
+      />
+    </Suspense>
   );
 }

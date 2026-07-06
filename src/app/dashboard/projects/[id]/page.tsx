@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { getProject, getModels } from "@/lib/actions";
 import { getUserRole } from "@/lib/rbac";
-import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
+import { getSessionUser } from "@/lib/session";
 import { db } from "@/db";
 import { teamMembers, documents, users, auditLogs } from "@/db/schema";
 import { eq, and, desc } from "drizzle-orm";
@@ -21,8 +21,7 @@ export default async function ProjectDetailPage({
   const project = await getProject(projectId);
   if (!project) notFound();
 
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
 
   // Load all related data in parallel
   const [models, members, projectDocs, owner, role] = await Promise.all([
