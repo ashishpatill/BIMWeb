@@ -14,8 +14,8 @@ import {
   notificationPreferences,
   auditLogs,
 } from "@/db/schema";
-import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
-import { eq, and, desc, like, sql } from "drizzle-orm";
+import { getSessionUser } from "@/lib/session";
+import { eq, and, desc, like, sql, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { generateApiKey } from "@/lib/api-keys";
 import { getEcosystemHealth } from "@/lib/api-clients";
@@ -25,8 +25,7 @@ import { sendInviteEmail } from "@/lib/email";
 
 // Sync Kinde user with our Neon DB
 export async function syncUser() {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
 
   if (!user || !user.id || !user.email) {
     return { success: false, error: "Not authenticated" };
@@ -61,8 +60,7 @@ export async function syncUser() {
 
 // Get user profile/db details
 export async function getDbUser() {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user || !user.id) return null;
 
   try {
@@ -79,8 +77,7 @@ export async function getDbUser() {
 
 // Create a new project
 export async function createProject(name: string, description?: string) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
 
   if (!user || !user.id) {
     return { success: false, error: "Not authenticated" };
@@ -112,8 +109,7 @@ export async function createProject(name: string, description?: string) {
 
 // Get projects for current user
 export async function getProjects() {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
 
   if (!user || !user.id) return [];
 
@@ -130,8 +126,7 @@ export async function getProjects() {
 
 // Create a new model in a project
 export async function createModel(projectId: number, name: string, description?: string, fileSize: string = "0 KB", fileUrl?: string) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
 
   if (!user || !user.id) {
     return { success: false, error: "Not authenticated" };
@@ -159,8 +154,7 @@ export async function createModel(projectId: number, name: string, description?:
 
 // Get models (optionally filtered by projectId)
 export async function getModels(projectId?: number) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
 
   if (!user || !user.id) return [];
 
@@ -195,8 +189,7 @@ export async function getModels(projectId?: number) {
 
 // Get a single project by id (with ownership check)
 export async function getProject(projectId: number) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user || !user.id) return null;
 
   try {
@@ -227,8 +220,7 @@ export async function getProject(projectId: number) {
 
 // Update a project
 export async function updateProject(projectId: number, name: string, description?: string) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user || !user.id) return { success: false, error: "Not authenticated" };
 
   try {
@@ -252,8 +244,7 @@ export async function updateProject(projectId: number, name: string, description
 
 // Delete a project
 export async function deleteProject(projectId: number) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user || !user.id) return { success: false, error: "Not authenticated" };
 
   try {
@@ -274,8 +265,7 @@ export async function deleteProject(projectId: number) {
 
 // Delete a model
 export async function deleteModel(modelId: number) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user || !user.id) return { success: false, error: "Not authenticated" };
 
   try {
@@ -304,8 +294,7 @@ export async function deleteModel(modelId: number) {
 
 // Remove a team member
 export async function removeTeamMember(memberId: number) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user || !user.id) return { success: false, error: "Not authenticated" };
 
   try {
@@ -333,8 +322,7 @@ export async function removeTeamMember(memberId: number) {
 
 // Add team member to project
 export async function addTeamMember(projectId: number, email: string, role: string = "viewer") {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
 
   if (!user || !user.id) {
     return { success: false, error: "Not authenticated" };
@@ -399,8 +387,7 @@ export async function addTeamMember(projectId: number, email: string, role: stri
 
 // Get all team members of user's projects
 export async function getTeamMembers() {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
 
   if (!user || !user.id) return [];
 
@@ -451,8 +438,7 @@ export async function createApiKey(
   scopes?: string[],
   rateLimitPerMin?: number,
 ) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) return { success: false as const, error: "Not authenticated" };
 
   if (!label || label.trim() === "") {
@@ -492,8 +478,7 @@ export async function createApiKey(
 
 /** List current user's API keys (never returns hashes). */
 export async function getApiKeys() {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) return [];
 
   try {
@@ -521,8 +506,7 @@ export async function getApiKeys() {
 
 /** Revoke an API key (soft delete via revokedAt). */
 export async function revokeApiKey(id: number) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) return { success: false as const, error: "Not authenticated" };
 
   try {
@@ -557,8 +541,7 @@ export async function revokeApiKey(id: number) {
 
 /** Rotate an API key: revoke old, create new. Returns new plaintext once. */
 export async function rotateApiKey(id: number) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) return { success: false as const, error: "Not authenticated" };
 
   try {
@@ -626,8 +609,7 @@ export async function recordApiKeyUsage(prefix: string) {
 
 /** Get the current user's search history. */
 export async function getSearchHistory(limit = 20) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) return [];
 
   try {
@@ -645,8 +627,7 @@ export async function getSearchHistory(limit = 20) {
 
 /** Add a search to the user's history. */
 export async function addSearchHistory(query: string, mode: string) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) return { success: false as const, error: "Not authenticated" };
 
   if (!query || query.trim() === "") {
@@ -669,8 +650,7 @@ export async function addSearchHistory(query: string, mode: string) {
 
 /** Clear the current user's search history. */
 export async function clearSearchHistory() {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) return { success: false as const, error: "Not authenticated" };
 
   try {
@@ -689,8 +669,7 @@ export async function clearSearchHistory() {
 
 /** Get documents, optionally filtered by workspaceId. */
 export async function getDocuments(workspaceId?: number) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) return [];
 
   try {
@@ -707,7 +686,7 @@ export async function getDocuments(workspaceId?: number) {
     if (userWorkspaces.length === 0) return [];
 
     const workspaceIds = userWorkspaces.map((w) => w.id);
-    conditions.push(sql`${documents.workspaceId} = ANY(${workspaceIds}::int[])`);
+    conditions.push(inArray(documents.workspaceId, workspaceIds));
 
     return await db
       .select()
@@ -730,8 +709,7 @@ export async function createDocument(
     mimeType?: string;
   },
 ) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) return { success: false as const, error: "Not authenticated" };
 
   if (!input.name || !input.fileUrl) {
@@ -772,8 +750,7 @@ export async function updateDocumentStatus(
   status: string,
   chunks?: number,
 ) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) return { success: false as const, error: "Not authenticated" };
 
   try {
@@ -797,8 +774,7 @@ export async function updateDocumentStatus(
 
 /** Delete a document by id. */
 export async function deleteDocument(id: number) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) return { success: false as const, error: "Not authenticated" };
 
   try {
@@ -833,8 +809,7 @@ export async function deleteDocument(id: number) {
 
 /** Get the current user's notification preferences. */
 export async function getNotificationPreferences() {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) return null;
 
   try {
@@ -859,8 +834,7 @@ export async function updateNotificationPreferences(
     projectEmails?: boolean;
   },
 ) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) return { success: false as const, error: "Not authenticated" };
 
   try {
@@ -898,8 +872,7 @@ export async function updateNotificationPreferences(
 
 /** Get the current user's onboarding state. */
 export async function getUserOnboarding() {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) return null;
 
   try {
@@ -920,8 +893,7 @@ export async function getUserOnboarding() {
 export async function updateUserOnboarding(
   patch: Record<string, unknown>,
 ) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) return { success: false as const, error: "Not authenticated" };
 
   try {
@@ -958,8 +930,7 @@ export async function updateUserOnboarding(
  * [SECURITY-VERIFY] — requires the caller to be a project admin.
  */
 export async function updateTeamMemberRole(memberId: number, role: string) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) return { success: false as const, error: "Not authenticated" };
 
   const validRoles = ["admin", "editor", "viewer"];
@@ -1013,8 +984,7 @@ export async function updateTeamMemberRole(memberId: number, role: string) {
  * If already joined, returns alreadyJoined=true with the projectId.
  */
 export async function acceptInvite(token: string) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) {
     return { success: false as const, error: "Not authenticated" };
   }
@@ -1083,8 +1053,7 @@ export async function acceptInvite(token: string) {
  * Requires project admin access.
  */
 export async function resendInvite(memberId: number) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) return { success: false as const, error: "Not authenticated" };
 
   try {
@@ -1161,8 +1130,7 @@ export async function getAuditLogsForUser(filters?: {
   targetType?: string;
   limit?: number;
 }) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) throw new Error("Unauthorized: authentication required");
 
   try {
@@ -1196,8 +1164,7 @@ export async function updateUserProfile(data: {
   firstName?: string;
   lastName?: string;
 }) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) return { success: false as const, error: "Not authenticated" };
 
   try {
@@ -1224,8 +1191,7 @@ export async function updateUserProfile(data: {
 
 /** Update a workspace's name. */
 export async function updateWorkspace(workspaceId: number, name: string) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) return { success: false as const, error: "Not authenticated" };
 
   if (!name || name.trim() === "") {

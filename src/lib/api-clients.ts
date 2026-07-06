@@ -173,6 +173,35 @@ export class BIMIndexClient {
     if (!res.ok) throw new EcosystemError("BIMIndex", "/health", res.status, await res.text());
     return (await parseJson(res)) as { status: string };
   }
+
+  /** POST /ingest — index documents into Tantivy, LanceDB, and KuzuDB. */
+  async ingest(
+    documents: Array<{ title: string; body: string; id?: string; metadata?: string }>,
+  ): Promise<{
+    status: string;
+    indexed: number;
+    backends?: Record<string, { status: string; indexed?: number; error?: string }>;
+  }> {
+    const endpoint = "/ingest";
+    let res: Response;
+    try {
+      res = await fetchWithTimeout(`${this.baseUrl}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documents }),
+      });
+    } catch (e) {
+      throw new EcosystemError("BIMIndex", endpoint, 0, (e as Error).message);
+    }
+    if (!res.ok) {
+      throw new EcosystemError("BIMIndex", endpoint, res.status, await res.text());
+    }
+    return (await parseJson(res)) as {
+      status: string;
+      indexed: number;
+      backends?: Record<string, { status: string; indexed?: number; error?: string }>;
+    };
+  }
 }
 
 export class BIMExtractClient {

@@ -4,7 +4,7 @@
  * @security Pro verify mandatory.
  */
 
-import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
+import { getSessionUser } from "@/lib/session";
 import { db } from "@/db";
 import { projects, teamMembers, users } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -61,8 +61,7 @@ export async function requireRole(
   projectId: number,
   requiredRole: Role
 ): Promise<{ allowed: boolean; userId: string }> {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
 
   if (!user?.id) {
     return { allowed: false, userId: "" };

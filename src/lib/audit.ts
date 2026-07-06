@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import { auditLogs } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
-import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
+import { getSessionUser } from "@/lib/session";
 import * as Sentry from "@sentry/nextjs";
 
 export interface AuditLogEntry {
@@ -13,8 +13,7 @@ export interface AuditLogEntry {
 }
 
 export async function logAction(entry: AuditLogEntry): Promise<void> {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   const effectiveActorId = user?.id ?? entry.actorId;
 
   try {
@@ -36,8 +35,7 @@ export async function logAction(entry: AuditLogEntry): Promise<void> {
 }
 
 export async function getAuditLogs(limit = 50) {
-  const { getUser } = getKindeServerSession();
-  const user = await getUser();
+  const user = await getSessionUser();
   if (!user?.id) {
     throw new Error("Unauthorized: authentication required");
   }
