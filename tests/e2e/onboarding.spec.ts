@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { hasDatabaseDashboardE2E } from "./helpers";
 
 /**
  * Onboarding checklist: first-run guided tour persisted on the user's
@@ -8,8 +9,8 @@ import { test, expect } from "@playwright/test";
 
 test.describe("Onboarding checklist", () => {
   test.skip(
-    !process.env.E2E_BASE_URL,
-    "Skipped: requires live Kinde + Neon + ecosystem services. Run via CI with E2E_BASE_URL set.",
+    !hasDatabaseDashboardE2E(),
+    "Skipped: set E2E_TEST_BYPASS=true and DATABASE_URL (or E2E_BASE_URL) for dashboard onboarding E2E.",
   );
 
   test("shows onboarding checklist on first visit to dashboard", async ({ page }) => {

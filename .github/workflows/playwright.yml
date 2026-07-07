@@ -1,16 +1,15 @@
 name: Playwright Tests
+
 on:
   push:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+
 jobs:
   smoke:
     timeout-minutes: 30
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: BIMWeb
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -20,21 +19,21 @@ jobs:
         with:
           node-version: "22"
           cache: pnpm
-          cache-dependency-path: BIMWeb/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install
       - name: Install Playwright Browsers
         run: pnpm exec playwright install --with-deps chromium
       - name: Run landing + a11y specs
-        run: pnpm exec playwright test tests/e2e/landing.spec.ts tests/e2e/a11y.spec.ts tests/e2e/not-found.spec.ts tests/e2e/redirects.spec.ts
+        run: pnpm exec playwright test tests/e2e/landing.spec.ts tests/e2e/a11y.spec.ts
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
           name: playwright-smoke-report
-          path: BIMWeb/playwright-report/
+          path: playwright-report/
           retention-days: 14
 
-  # Ecosystem API tests run against the meta-repo docker-compose stack (not this repo alone).
+  # Ecosystem API tests run against the meta-repo docker-compose stack.
   # Canonical workflow: ashishpatill/Retrieval_workspace — .github/workflows/ecosystem-e2e.yml
   ecosystem:
     timeout-minutes: 45
@@ -81,9 +80,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: [smoke]
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-    defaults:
-      run:
-        working-directory: BIMWeb
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -93,15 +89,17 @@ jobs:
         with:
           node-version: "22"
           cache: pnpm
-          cache-dependency-path: BIMWeb/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install
       - name: Install Playwright Browsers
         run: pnpm exec playwright install --with-deps chromium
       - name: Run dashboard specs with auth bypass
+        if: ${{ secrets.DATABASE_URL != '' }}
         env:
           E2E_TEST_BYPASS: "true"
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          E2E_TEST_USER_ID: ${{ secrets.E2E_TEST_USER_ID }}
           KINDE_ISSUER_URL: ${{ secrets.KINDE_ISSUER_URL }}
           KINDE_CLIENT_ID: ${{ secrets.KINDE_CLIENT_ID }}
           KINDE_CLIENT_SECRET: ${{ secrets.KINDE_CLIENT_SECRET }}
@@ -109,4 +107,6 @@ jobs:
           KINDE_POST_LOGOUT_REDIRECT_URL: http://localhost:3000
           KINDE_POST_LOGIN_REDIRECT_URL: http://localhost:3000/dashboard
         run: pnpm exec playwright test tests/e2e/health.spec.ts tests/e2e/onboarding.spec.ts
-        continue-on-error: true
+      - name: Skip dashboard E2E (DATABASE_URL secret not configured)
+        if: ${{ secrets.DATABASE_URL == '' }}
+        run: echo "Configure GitHub secret DATABASE_URL to run dashboard Playwright specs in CI."

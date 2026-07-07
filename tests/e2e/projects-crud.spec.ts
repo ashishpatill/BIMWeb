@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { hasDatabaseDashboardE2E } from "./helpers";
 
 /**
  * Project CRUD: create, edit, duplicate, and delete projects via the
@@ -7,8 +8,8 @@ import { test, expect } from "@playwright/test";
 
 test.describe("Project CRUD", () => {
   test.skip(
-    !process.env.E2E_BASE_URL,
-    "Skipped: requires live Kinde + Neon + ecosystem services. Run via CI with E2E_BASE_URL set.",
+    !hasDatabaseDashboardE2E(),
+    "Skipped: set E2E_TEST_BYPASS=true and DATABASE_URL (or E2E_BASE_URL) for project CRUD E2E.",
   );
 
   test("create a new project", async ({ page }) => {

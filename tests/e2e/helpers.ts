@@ -5,6 +5,16 @@ export function hasDashboardE2E(): boolean {
   );
 }
 
+/** Dashboard E2E against local dev server with Neon (CI bypass + DATABASE_URL). */
+export function hasDatabaseDashboardE2E(): boolean {
+  return hasDashboardE2E() && Boolean(process.env.DATABASE_URL);
+}
+
+/** Dashboard E2E with docker-compose backends (meta-repo CI). */
+export function hasFullStackDashboardE2E(): boolean {
+  return hasDatabaseDashboardE2E() && hasEcosystemE2E();
+}
+
 /** True when backend services (docker-compose) are expected to be up. */
 export function hasEcosystemE2E(): boolean {
   return process.env.ECOSYSTEM_E2E === "true";

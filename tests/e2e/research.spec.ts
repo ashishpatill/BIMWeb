@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { hasFullStackDashboardE2E } from "./helpers";
 
 /**
  * Research: ask a question via /dashboard/research, see grounded answer
@@ -8,8 +9,8 @@ import { test, expect } from "@playwright/test";
 
 test.describe("Research", () => {
   test.skip(
-    !process.env.E2E_BASE_URL,
-    "Skipped: requires live Kinde + BIMAgent + BIMIndex. Run via CI with E2E_BASE_URL set.",
+    !hasFullStackDashboardE2E(),
+    "Skipped: requires E2E_TEST_BYPASS, DATABASE_URL, and ECOSYSTEM_E2E=true (or E2E_BASE_URL against a full stack).",
   );
 
   test("search input and example chips are present", async ({ page }) => {
