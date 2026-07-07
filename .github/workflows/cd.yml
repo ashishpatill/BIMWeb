@@ -1,18 +1,50 @@
 name: CD
+
 on:
   push:
     branches: [main]
+
+# Required GitHub secrets (Repository → Settings → Secrets → Actions):
+#   VERCEL_TOKEN          — Vercel account token
+#   VERCEL_ORG_ID         — Team/user id from Vercel project settings
+#   VERCEL_PROJECT_ID     — Project id from Vercel project settings
+# Set the same runtime env vars on the Vercel project (not in this repo):
+#   DATABASE_URL, KINDE_ISSUER_URL, KINDE_CLIENT_ID, KINDE_CLIENT_SECRET,
+#   KINDE_SITE_URL, KINDE_POST_*_REDIRECT_URL, BIMAGENT_URL, BIMINDEX_URL,
+#   BIMEXTRACT_URL, BIMCLOUD_URL, NEXT_PUBLIC_* counterparts, optional Upstash/S3.
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
+
       - uses: pnpm/action-setup@v4
         with:
           version: 9
-      - run: pnpm install
-      - run: pnpm build
-      # Deploy step — add your provider (Vercel, Cloudflare, etc.)
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Pull Vercel environment
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          scope: ${{ secrets.VERCEL_ORG_ID }}
+
+      - name: Build project artifacts
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: "--prod"
+          scope: ${{ secrets.VERCEL_ORG_ID }}
