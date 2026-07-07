@@ -9,7 +9,10 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "test:a11y": "playwright test tests/e2e/a11y.spec.ts"
+    "test:a11y": "playwright test tests/e2e/a11y.spec.ts",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:check": "bash scripts/check-migration.sh"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1075.0",
