@@ -89,3 +89,29 @@ A REST API is available at `/api/v1/*` with endpoints for projects, models, team
 - Smoke/export tests (2)
 
 Playwright E2E specs are designed for 12 primary journeys; `@playwright/test` is installed but E2E requires a live environment in CI.
+
+## Database migrations
+
+Migration `0002_narrow_lady_ursula` adds workspaces, API keys, audit logs, documents, and related columns. The SQL is committed under `src/db/migrations/`; it is **not applied automatically**.
+
+| Step | Command |
+|---|---|
+| Check status (requires `DATABASE_URL` in `.env.local`) | `./scripts/check-migration.sh` or `pnpm db:check` |
+| Apply via Drizzle migrate | `pnpm db:migrate` |
+| Push schema directly (review diff first) | `pnpm db:push` |
+
+Without `DATABASE_URL`, `pnpm db:check` prints setup steps and exits non-zero. Never commit `.env.local`.
+
+## Deployment (Vercel)
+
+Production deploys run via `.github/workflows/cd.yml` on pushes to `main`.
+
+Configure GitHub Actions secrets:
+
+| Secret | Purpose |
+|---|---|
+| `VERCEL_TOKEN` | Vercel personal/team token |
+| `VERCEL_ORG_ID` | Vercel team or user id |
+| `VERCEL_PROJECT_ID` | Linked Vercel project id |
+
+Mirror runtime environment variables on the Vercel project (`DATABASE_URL`, `KINDE_*`, service URLs, optional S3/Upstash). Do not commit secrets to the repository.

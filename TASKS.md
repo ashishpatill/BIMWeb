@@ -1,6 +1,6 @@
 # BIMWeb — Task List with Detailed Specs
 
-**Last updated: 2026-06-27** — All 14 core tasks DONE. 192 unit+component tests pass (16 files). UX redesign complete: 9 new/redesigned pages, full-screen 3D viewer with IFC, command palette, theme toggle, onboarding, toasts, breadcrumbs, empty states — all real data, no fakes. REST API v1 full + OpenAPI 3.1 spec + Scalar UI at `/api/docs`. Build passes; 30 routes. Migration `0002` generated (NOT pushed — requires human approval).
+**Last updated: 2026-06-27** — All 14 core tasks DONE. 192 unit+component tests pass (16 files). UX redesign complete: 9 new/redesigned pages, full-screen 3D viewer with IFC, command palette, theme toggle, onboarding, toasts, breadcrumbs, empty states — all real data, no fakes. REST API v1 full + OpenAPI 3.1 spec + Scalar UI at `/api/docs`. Build passes; 30 routes. Migration `0002_narrow_lady_ursula` is **committed in git**; Neon apply is **pending** until you set `DATABASE_URL` and run `pnpm db:migrate` (verify with `./scripts/check-migration.sh`).
 
 ---
 
@@ -150,8 +150,7 @@
 
 ## T-WEB-11: Analytics (Offload 6.0 — Flash→Pro) — **DONE**
 
-**Status**: ✅ `src/lib/analytics/client.ts` + `src/lib/analytics/server.ts` with PostHog.
-- `posthog-js` and `@posthog/nextjs` patterns implemented (PostHog types in `posthog.d.ts`)
+**Status**: ⏸ Analytics deferred — `client.ts` is a no-op stub; `server.ts` optionally captures when `NEXT_PUBLIC_POSTHOG_KEY` is set.
 - `trackEvent()`, `identifyUser()`, `trackServerEvent()`, `getPageViewStats()`
 - `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST` env vars documented
 
@@ -174,7 +173,7 @@
 ## T-WEB-13: Public REST API (Offload 6.3 — Flash→Pro) — **DONE**
 
 **Status**: ✅ Full v1 REST API with per-user key validation.
-- `api_keys` table in schema + migration `0002` (generated, NOT pushed)
+- `api_keys` table in schema + migration `0002` (SQL committed; DB apply pending)
 - `src/lib/api-keys.ts` — `hashKey()`, `generateApiKey()`, `validateKey()` (SHA-256 + constant-time `crypto.timingSafeEqual`), `checkScope()`
 - Per-key rate limit via Upstash Redis (`UPSTASH_REDIS_REST_*`) with in-memory fallback (429 + `Retry-After`)
 - 9 endpoint files:
@@ -247,7 +246,7 @@ New tables: `api_keys`, `search_history`, `documents`, `notification_preferences
 
 | Gap | Priority | Notes |
 |-----|----------|-------|
-| Push migration `0002` to DB | High | Must run `pnpm drizzle-kit push` against live Neon DB after human review |
+| Apply migration `0002` to Neon | High | Review SQL, then `pnpm db:migrate`; verify with `pnpm db:check` |
 | Playwright dashboard E2E in CI | Medium | `E2E_TEST_BYPASS` + smoke/a11y/platform-api jobs in `playwright.yml`; dashboard specs need `DATABASE_URL` secret |
 | ColQwen GPU production | Low | Set `DENSE_EMBEDDING_BACKEND=colqwen2.5` + GPU deps on BIMIndex host |
 | Graph entity extraction | Low | Kuzu indexes Document→Page; no NER/entity pipeline yet |

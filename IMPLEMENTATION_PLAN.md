@@ -1,6 +1,6 @@
 # Implementation Plan: BIMWeb
 
-**Last updated: 2026-06-27** — All 14 TASKS.md items complete. UX redesign shipped across all pages. 192 tests passing. Migration `0002` generated (not pushed). All gaps closed except E2E tests and DB migration.
+**Last updated: 2026-06-27** — All 14 TASKS.md items complete. UX redesign shipped across all pages. 192 tests passing. Migration `0002` committed; Neon apply pending (`pnpm db:migrate`). All gaps closed except E2E tests and DB migration.
 
 ## 🚀 Completed
 
@@ -135,7 +135,7 @@ Following `REDESIGN_PLAN.md`, the full UX redesign was executed across 5 paralle
 
 | Item | Priority | Notes |
 |------|----------|-------|
-| Push migration `0002` to DB | High | Human approval required before `pnpm drizzle-kit push` |
+| Apply migration `0002` to Neon | High | Review SQL, run `pnpm db:migrate`, verify with `pnpm db:check` |
 | Playwright E2E in CI | Medium | Dep installed; needs config + spec files + live env |
 | Upgrade rate limiter to Redis | Low | Current in-memory (resets on restart) |
 | A11Y pass (Lighthouse ≥95) | Low | axe-core scan pending |

@@ -58,7 +58,7 @@ Locked = "in progress by a named task; do not edit." A file can be owned by at m
 | `src/app/not-found.tsx`, `src/app/dashboard/not-found.tsx` (new) | T-FOUND-1 | in_progress |
 | `src/app/globals.css` | T-FOUND-1 | in_progress |
 | `src/db/schema.ts` | T-DB-1 | in_progress |
-| `src/db/migrations/**` (new 0002) | T-DB-1 | in_progress |
+| `src/db/migrations/**` (0002) | T-DB-1 | committed (DB apply pending) |
 | `src/lib/actions.ts` | T-DB-1 | in_progress |
 | `src/lib/api-keys.ts` (new) | T-DB-1 | in_progress |
 | `src/lib/rbac.ts` | T-DB-1 | in_progress (read+extend only) |
@@ -140,7 +140,7 @@ Wave 1 tasks have **zero file overlap** and run fully in parallel. Wave 2 tasks 
 | Task | Subagent | Status | Files changed | Notes |
 |---|---|---|---|---|
 | T-FOUND-1 | dashboard | done | `src/components/common/{empty-state,page-header,confirm-dialog,stat-card,connection-badge,role-badge,segmented-tabs,kbd,help-callout}.tsx`, `src/components/common/index.ts`, `src/components/ui/command.tsx`, `src/components/ui/popover.tsx`, `src/components/command-palette.tsx`, `src/components/theme-provider.tsx`, `src/components/theme-toggle.tsx`, `src/lib/navigation.ts`, `src/app/not-found.tsx`, `src/app/dashboard/not-found.tsx`, `src/app/layout.tsx`, `src/app/globals.css` | All 18 created + 2 edited. Passes tsc --noEmit on my files. Lint: 0 errors in my scope (1 pre-existing in T-VIEWER-1's model-viewer.tsx). Build: fails pre-existing on T-VIEWER-1's missing viewer-client.tsx. |
-| T-DB-1 | db | done | `src/db/schema.ts`, `src/db/migrations/0002_narrow_lady_ursula.sql`, `src/lib/api-keys.ts`, `src/lib/actions.ts` | Migration generated but NOT pushed. See summary below. |
+| T-DB-1 | db | done (code) | `src/db/schema.ts`, `src/db/migrations/0002_narrow_lady_ursula.sql`, … | SQL committed; apply with `pnpm db:migrate` when `DATABASE_URL` is set. |
 | T-VIEWER-1 | viewer | done | `src/components/viewer/model-viewer.tsx`, `measurement-tools.ts`, `section-plane.ts`, `src/lib/ifc/parser.ts`, `src/app/dashboard/projects/[id]/models/[modelId]/page.tsx`, `viewer-client.tsx`, `get-model.ts`, `loading.tsx` | Full-screen viewer route with server-side project+model loading, IFC parser rewrite with web-ifc, measurement system with distance panel, section planes with sliders/multiple planes/flip, dynamic model tree from loaded geometry, keyboard shortcuts, onboarding tour, all states (loading/ready/parsing-ifc/unsupported-format/webgl-unsupported/error/empty). No fake data. No silent fallback. |
 | T-ECO-1 | flash | done | `src/lib/api-clients.ts`, `.env.local.example`, `tests/lib/api-clients.test.ts` | Added `BIMExtractClient` (11 methods), `bimExtract` singleton, 4-service `getEcosystemHealth`, 5 unit tests |
 | T-PAGE-SIDEBAR-NAV | flash (DeepSeek V4 Flash) | done | `src/components/app-sidebar.tsx`, `src/components/top-nav.tsx`, `src/app/dashboard/layout.tsx`, `src/components/workspace-switcher.tsx` (new) | All 4 files pass lint (0 errors, 0 new warnings), build, tsc. See summary below. |
@@ -171,7 +171,7 @@ Wave 1 tasks have **zero file overlap** and run fully in parallel. Wave 2 tasks 
 - `pnpm exec tsc --noEmit` → **clean** (no output) ✅
 - `pnpm test` → **192 passed** across **16 files**: rbac(27), sharing(17), storage(15), workspace(8), api-keys(29), ifc-parser(14), actions(26), audit(4), api-clients(18), app-sidebar(1), confirm-dialog(6), empty-state(6), segmented-tabs(9), stat-card(10), deployments(1), search(1) ✅
 - `pnpm build` → **passes**; **30 routes** registered (including `_not-found`) ✅
-- Migration `0002` generated (NOT pushed — requires human approval).
+- Migration `0002` committed; Neon apply pending (`./scripts/check-migration.sh`).
 - OpenAPI 3.1 schema (`/api/v1/openapi`, 1275 lines, 18 operationIds) + Scalar UI (`/api/docs`) — **both implemented** ✅
 - Playwright E2E: `playwright.config.ts` + 15 spec files added. `pnpm exec playwright test` → **1 passed** (landing), **32 skipped** (auth-gated, require `E2E_BASE_URL` + live Kinde/Neon/ecosystem). Chromium installed.
 - **All Waves 1–5 gates: PASSED.** ✅
@@ -182,7 +182,7 @@ These could not be completed autonomously and require explicit human action. The
 
 | # | Action | Why it needs you | How |
 |---|---|---|---|
-| 1 | ~~**Push migration `0002` to Neon**~~ — **DONE 2026-06-27** | ~~DB schema changes require explicit approval~~ | ✅ `pnpm drizzle-kit push` applied. All 10 tables + new columns live in Neon. FK constraints verified (workspaces FK correctly rejects non-existent user). Smoke test on `audit_logs` passed. |
+| 1 | **Apply migration `0002` to Neon** | Review `src/db/migrations/0002_narrow_lady_ursula.sql`, set `DATABASE_URL`, run `pnpm db:migrate`, verify with `pnpm db:check`. |
 | 2 | **Run Playwright E2E in CI / with live env** | 32 of 33 E2E specs are skipped because they need a live Kinde session + Neon DB + the BIMRAG ecosystem services running. They are written and ready, just guarded. | Start the platform (`./start-platform.sh`), set `E2E_BASE_URL=http://localhost:3000`, then `pnpm exec playwright test`. Add to CI once secrets are available. |
 | 3 | **Set Sentry DSN (optional)** | `Sentry.captureException` is wired in `src/lib/audit.ts` but is a no-op until `SENTRY_DSN` (server) / `NEXT_PUBLIC_SENTRY_DSN` (client) are set. | Create a Sentry project, add the DSNs to your `.env.local` (and CI/Vercel). No code change needed. |
 | 4 | **Set ecosystem env vars for live use** | Research/Documents/Health pages call BIMAgent/BIMIndex/BIMExtract/BIMCloud. They default to `localhost:8000/8001/8200/8080` and show a friendly "Start platform" banner when offline. For production, point the `NEXT_PUBLIC_BIM*` URLs at real deployments. | Set `NEXT_PUBLIC_BIMAGENT_URL`, `NEXT_PUBLIC_BIMINDEX_URL`, `NEXT_PUBLIC_BIMEXTRACT_URL`, `NEXT_PUBLIC_BIMCLOUD_URL`. |
