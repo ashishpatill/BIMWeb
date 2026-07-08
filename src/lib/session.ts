@@ -9,6 +9,7 @@ export type SessionUser = {
   email: string | null;
   given_name?: string | null;
   family_name?: string | null;
+  picture?: string | null;
 };
 
 export function isE2eBypass(): boolean {
@@ -34,11 +35,12 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     email: user.email ?? null,
     given_name: user.given_name,
     family_name: user.family_name,
+    picture: user.picture ?? null,
   };
 }
 
 export async function isSessionAuthenticated(): Promise<boolean> {
   if (isE2eBypass()) return true;
   const { isAuthenticated } = getKindeServerSession();
-  return isAuthenticated();
+  return (await isAuthenticated()) ?? false;
 }

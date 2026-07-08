@@ -33,16 +33,9 @@ import {
   updateNotificationPreferences,
   updateWorkspace,
 } from "@/lib/actions";
+import type { SessionUser } from "@/lib/session";
 
 // ─── Types ───────────────────────────────────────────────
-
-interface KindeUser {
-  id: string;
-  email: string | null;
-  given_name: string | null;
-  family_name: string | null;
-  picture: string | null;
-}
 
 interface DbUser {
   id: number;
@@ -71,7 +64,7 @@ interface Workspace {
 }
 
 interface SettingsClientProps {
-  kindeUser: KindeUser | null;
+  kindeUser: SessionUser | null;
   dbUser: DbUser | null;
   preferences: NotificationPrefs | null;
   workspaces: Workspace[];
@@ -91,7 +84,7 @@ type TabValue = (typeof SETTINGS_TABS)[number]["value"];
 
 // ─── Helpers ─────────────────────────────────────────────
 
-function getInitials(kindeUser: KindeUser | null): string {
+function getInitials(kindeUser: SessionUser | null): string {
   if (!kindeUser) return "U";
   const first = kindeUser.given_name?.[0] || "";
   const last = kindeUser.family_name?.[0] || "";
@@ -361,7 +354,7 @@ function ProfileTabContent({
   onSave,
   isSaving,
 }: {
-  kindeUser: KindeUser | null;
+  kindeUser: SessionUser | null;
   dbUser: DbUser | null;
   firstName: string;
   lastName: string;
