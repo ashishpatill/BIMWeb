@@ -95,7 +95,6 @@ jobs:
       - name: Install Playwright Browsers
         run: pnpm exec playwright install --with-deps chromium
       - name: Run dashboard specs with auth bypass
-        if: ${{ secrets.DATABASE_URL != '' }}
         env:
           E2E_TEST_BYPASS: "true"
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -106,7 +105,9 @@ jobs:
           KINDE_SITE_URL: http://localhost:3000
           KINDE_POST_LOGOUT_REDIRECT_URL: http://localhost:3000
           KINDE_POST_LOGIN_REDIRECT_URL: http://localhost:3000/dashboard
-        run: pnpm exec playwright test tests/e2e/health.spec.ts tests/e2e/onboarding.spec.ts
-      - name: Skip dashboard E2E (DATABASE_URL secret not configured)
-        if: ${{ secrets.DATABASE_URL == '' }}
-        run: echo "Configure GitHub secret DATABASE_URL to run dashboard Playwright specs in CI."
+        run: |
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "Configure GitHub secret DATABASE_URL to run dashboard Playwright specs in CI."
+            exit 0
+          fi
+          pnpm exec playwright test tests/e2e/health.spec.ts tests/e2e/onboarding.spec.ts
